@@ -90,11 +90,11 @@ export async function getSummary(qbo, realmId) {
 
   const [company, profitAndLoss, balanceSheet] = await Promise.all([
     call(qbo, 'getCompanyInfo', realmId),
-    call(qbo, 'report', 'ProfitAndLoss', {
+    call(qbo, 'reportProfitAndLoss', {
       start_date: ymd(monthStart),
       end_date: ymd(today),
     }),
-    call(qbo, 'report', 'BalanceSheet', { end_date: ymd(today) }),
+    call(qbo, 'reportBalanceSheet', { end_date: ymd(today) }),
   ]);
 
   return {
@@ -137,7 +137,7 @@ export async function getDailyCashFlow(qbo) {
   const today = new Date();
   const start = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000);
 
-  const report = await call(qbo, 'report', 'CashFlow', {
+  const report = await call(qbo, 'reportCashFlow', {
     start_date: ymd(start),
     end_date: ymd(today),
     summarize_column_by: 'Days',
