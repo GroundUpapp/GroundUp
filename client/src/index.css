@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-ground-950 text-cream-50 font-sans antialiased;
+    /* Respect iOS safe areas */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  /* Subtle warm radial backdrop */
+  #root {
+    min-height: 100vh;
+    background:
+      radial-gradient(120% 60% at 50% -10%, rgba(232, 144, 13, 0.10), transparent 60%),
+      theme('colors.ground.950');
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-amber-900/30 bg-ground-900/80 p-4 shadow-glow backdrop-blur;
+  }
+  .btn-primary {
+    @apply w-full rounded-xl bg-amber-500 px-4 py-3 font-semibold text-ground-950
+      transition active:scale-[0.98] hover:bg-amber-400 disabled:opacity-50;
+  }
+  .input {
+    @apply w-full rounded-xl border border-amber-900/40 bg-ground-800 px-4 py-3
+      text-cream-50 placeholder-cream-300/40 outline-none transition
+      focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-cream-200;
+  }
+}
