@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import Brand from './Brand';
 
 // Centered, mobile-first frame shared by Login and SignUp.
@@ -17,6 +18,16 @@ export default function AuthShell({ title, subtitle, children, footer }) {
           <p className="mt-6 text-center text-sm text-cream-300">{footer}</p>
         )}
       </div>
+
+      <nav className="mx-auto mt-8 flex items-center justify-center gap-4 text-xs text-cream-300/50">
+        <Link to="/privacy" className="hover:text-amber-300">
+          Privacy Policy
+        </Link>
+        <span aria-hidden="true">·</span>
+        <Link to="/terms" className="hover:text-amber-300">
+          Terms of Service
+        </Link>
+      </nav>
     </div>
   );
 }

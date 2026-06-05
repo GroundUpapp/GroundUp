@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 // 90 days of deterministic mock cash flow (i=0 is 90 days ago, i=89 is today)
-const CASH_FLOW = Array.from({ length: 90 }, (_, i) => {
+const MOCK_CASH_FLOW = Array.from({ length: 90 }, (_, i) => {
   const trend = 42850 + i * 55;
   const payrollDip = i % 14 < 3 ? -(3 - (i % 14)) * 2400 : 0;
   const invoices =
@@ -11,15 +11,16 @@ const CASH_FLOW = Array.from({ length: 90 }, (_, i) => {
   return Math.max(24000, Math.round(trend + payrollDip + invoices));
 });
 
-function CashFlowChart() {
+function CashFlowChart({ data }) {
   const W = 220;
   const H = 64;
-  const min = Math.min(...CASH_FLOW);
-  const max = Math.max(...CASH_FLOW);
+  const series = data && data.length ? data : MOCK_CASH_FLOW;
+  const min = Math.min(...series);
+  const max = Math.max(...series);
   const range = max - min || 1;
 
-  const pts = CASH_FLOW.map((v, i) => [
-    (i / (CASH_FLOW.length - 1)) * W,
+  const pts = series.map((v, i) => [
+    (i / (series.length - 1)) * W,
     H - 4 - ((v - min) / range) * (H - 10),
   ]);
 
@@ -65,7 +66,7 @@ const INIT_MSGS = [
   },
 ];
 
-export default function RightSidebar() {
+export default function RightSidebar({ cashFlow }) {
   const [msgs, setMsgs] = useState(INIT_MSGS);
   const [draft, setDraft] = useState('');
 
@@ -88,7 +89,7 @@ export default function RightSidebar() {
           90-Day Cash Flow
         </h3>
         <div className="card">
-          <CashFlowChart />
+          <CashFlowChart data={cashFlow} />
         </div>
       </section>
 
