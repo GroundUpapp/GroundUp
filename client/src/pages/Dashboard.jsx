@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { apiGet } from '../lib/api';
+import { apiGet, apiPost } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { currency } from '../lib/format';
 import DashboardHeader from '../components/DashboardHeader';
@@ -15,6 +15,7 @@ import JobBoard from '../components/JobBoard';
 import AiAssistant from '../components/AiAssistant';
 import NewInvoiceModal from '../components/NewInvoiceModal';
 import LogExpenseModal from '../components/LogExpenseModal';
+import AddJobModal from '../components/AddJobModal';
 import Spinner from '../components/Spinner';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -97,6 +98,45 @@ const TABS = [
   { id: 'ask', label: 'Ask', mobileOnly: true },
 ];
 
+// Subtle banner during the free trial.
+function TrialBanner({ days, onUpgrade }) {
+  return (
+    <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-950/30 px-4 py-2.5 text-sm">
+      <span className="text-amber-200">
+        Your free trial ends in <strong>{days} {days === 1 ? 'day' : 'days'}</strong> — upgrade to keep access.
+      </span>
+      <button
+        onClick={onUpgrade}
+        className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-ground-950 hover:bg-amber-400"
+      >
+        Upgrade
+      </button>
+    </div>
+  );
+}
+
+// Shown in place of the dashboard once the trial has ended and there's no plan.
+function UpgradeGate({ onUpgrade, busy, error }) {
+  return (
+    <div className="mx-auto max-w-md py-10 text-center">
+      <div className="card">
+        <h2 className="text-2xl font-bold text-cream-50">Your free trial has ended</h2>
+        <p className="mt-2 text-cream-300">
+          Upgrade to Ground Up Pro to keep your dashboard, invoices, and AI assistant.
+        </p>
+        <p className="mt-4 text-3xl font-extrabold text-amber-400">
+          $29<span className="text-base font-medium text-cream-300">/month</span>
+        </p>
+        <button onClick={onUpgrade} disabled={busy} className="btn-primary mt-4">
+          {busy ? 'Starting…' : 'Start for $29/month'}
+        </button>
+        {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+        <p className="mt-3 text-xs text-cream-300/50">Cancel anytime.</p>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [data, setData] = useState(null);
   const [cashFlow, setCashFlow] = useState(null);
@@ -105,11 +145,37 @@ export default function Dashboard() {
   const [connectUrl, setConnectUrl] = useState('#');
   const [disconnectUrl, setDisconnectUrl] = useState('#');
 
+  const [billing, setBilling] = useState(null);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingError, setBillingError] = useState(null);
+
   const [view, setView] = useState('overview');
-  const [modal, setModal] = useState(null); // 'invoice' | 'expense' | null
+  const [modal, setModal] = useState(null); // 'invoice' | 'expense' | 'job' | null
   const [refreshKey, setRefreshKey] = useState(0);
 
   const refresh = () => setRefreshKey((k) => k + 1);
+
+  async function startCheckout() {
+    setBillingBusy(true);
+    setBillingError(null);
+    try {
+      const { url } = await apiPost('/billing/checkout');
+      window.location.assign(url);
+    } catch (e) {
+      setBillingError(e.message);
+      setBillingBusy(false);
+    }
+  }
+
+  async function startPortal() {
+    setBillingError(null);
+    try {
+      const { url } = await apiPost('/billing/portal');
+      window.location.assign(url);
+    } catch (e) {
+      setBillingError(e.message);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -124,8 +190,14 @@ export default function Dashboard() {
       setDisconnectUrl(dUrl);
 
       try {
-        const status = await apiGet('/auth/quickbooks/status');
+        const [statusRes, billingRes] = await Promise.allSettled([
+          apiGet('/auth/quickbooks/status'),
+          apiGet('/billing/status'),
+        ]);
         if (!active) return;
+
+        setBilling(billingRes.status === 'fulfilled' ? billingRes.value : null);
+        const status = statusRes.status === 'fulfilled' ? statusRes.value : { connected: false };
         setConnected(!!status.connected);
 
         if (status.connected) {
@@ -155,6 +227,14 @@ export default function Dashboard() {
     };
   }, [refreshKey]);
 
+  // Returning from Stripe: the webhook may lag a beat, so re-check once.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('subscribed') === 'true') {
+      const t = setTimeout(() => setRefreshKey((k) => k + 1), 2500);
+      return () => clearTimeout(t);
+    }
+  }, []);
+
   const connectBanner = (
     <div className="card mb-4 text-center">
       <p className="text-sm text-cream-200">Connect QuickBooks to see your real numbers.</p>
@@ -177,6 +257,10 @@ export default function Dashboard() {
           <LeftSidebar
             onNewInvoice={() => setModal('invoice')}
             onLogExpense={() => setModal('expense')}
+            onAddJob={() => setModal('job')}
+            billing={billing}
+            onUpgrade={startCheckout}
+            onManage={startPortal}
           />
         </aside>
 
@@ -186,22 +270,41 @@ export default function Dashboard() {
             <div className="flex justify-center py-20">
               <Spinner className="h-8 w-8" />
             </div>
+          ) : billing && !billing.access ? (
+            <UpgradeGate onUpgrade={startCheckout} busy={billingBusy} error={billingError} />
           ) : (
             <>
+              {billing?.trialing && (
+                <TrialBanner days={billing.trialDaysLeft} onUpgrade={startCheckout} />
+              )}
+              {billingError && (
+                <p className="mb-4 rounded-lg bg-red-950/60 px-3 py-2 text-sm text-red-300">
+                  {billingError}
+                </p>
+              )}
+
               {/* Mobile quick actions (sidebar is hidden on phones) */}
-              <div className="mb-4 grid grid-cols-2 gap-3 min-[900px]:hidden">
+              <div className="mb-4 space-y-3 min-[900px]:hidden">
                 <button
                   onClick={() => setModal('invoice')}
-                  className="rounded-xl bg-amber-500 px-3 py-3 text-sm font-semibold text-ground-950 active:scale-[0.98]"
+                  className="w-full rounded-xl bg-amber-500 px-3 py-3 text-sm font-semibold text-ground-950 active:scale-[0.98]"
                 >
                   + New Invoice
                 </button>
-                <button
-                  onClick={() => setModal('expense')}
-                  className="rounded-xl border border-amber-900/40 px-3 py-3 text-sm font-medium text-cream-200 active:scale-[0.98]"
-                >
-                  Log Expense
-                </button>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setModal('expense')}
+                    className="rounded-xl border border-amber-900/40 px-3 py-3 text-sm font-medium text-cream-200 active:scale-[0.98]"
+                  >
+                    Log Expense
+                  </button>
+                  <button
+                    onClick={() => setModal('job')}
+                    className="rounded-xl border border-amber-900/40 px-3 py-3 text-sm font-medium text-cream-200 active:scale-[0.98]"
+                  >
+                    Add Job
+                  </button>
+                </div>
               </div>
 
               {/* Tabs */}
@@ -266,7 +369,13 @@ export default function Dashboard() {
               {view === 'money' && (connected ? <MoneyOwed refreshKey={refreshKey} /> : connectBanner)}
 
               {/* Jobs — manual jobs work even without QuickBooks */}
-              {view === 'jobs' && <JobBoard refreshKey={refreshKey} connected={connected} />}
+              {view === 'jobs' && (
+                <JobBoard
+                  refreshKey={refreshKey}
+                  connected={connected}
+                  onAddJob={() => setModal('job')}
+                />
+              )}
 
               {/* Ask (mobile only — desktop has the assistant in the sidebar) */}
               {view === 'ask' && (
@@ -309,6 +418,15 @@ export default function Dashboard() {
       )}
       {modal === 'expense' && (
         <LogExpenseModal onClose={() => setModal(null)} onCreated={refresh} />
+      )}
+      {modal === 'job' && (
+        <AddJobModal
+          onClose={() => setModal(null)}
+          onCreated={() => {
+            refresh();
+            setView('jobs');
+          }}
+        />
       )}
     </div>
   );

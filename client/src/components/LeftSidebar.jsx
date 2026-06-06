@@ -6,9 +6,10 @@ const RECENT = [
   { id: 5, color: 'bg-emerald-400', title: 'Payment received', sub: 'Downtown Office · $12,000', time: '4d ago' },
 ];
 
-export default function LeftSidebar({ onNewInvoice, onLogExpense }) {
+export default function LeftSidebar({ onNewInvoice, onLogExpense, onAddJob, billing, onUpgrade, onManage }) {
+  const isPro = billing?.status === 'active';
   return (
-    <div className="flex flex-col gap-6 p-4">
+    <div className="flex h-full flex-col gap-6 p-4">
       <section>
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-cream-300/60">
           Quick Actions
@@ -25,6 +26,12 @@ export default function LeftSidebar({ onNewInvoice, onLogExpense }) {
             className="rounded-xl border border-amber-900/40 px-3 py-2 text-sm font-medium text-cream-200 transition hover:border-amber-500 hover:text-amber-300"
           >
             Log Expense
+          </button>
+          <button
+            onClick={onAddJob}
+            className="rounded-xl border border-amber-900/40 px-3 py-2 text-sm font-medium text-cream-200 transition hover:border-amber-500 hover:text-amber-300"
+          >
+            Add Job
           </button>
         </div>
       </section>
@@ -46,6 +53,26 @@ export default function LeftSidebar({ onNewInvoice, onLogExpense }) {
           ))}
         </ul>
       </section>
+
+      {billing && (
+        <section className="mt-auto border-t border-amber-900/20 pt-4">
+          {isPro ? (
+            <button
+              onClick={onManage}
+              className="w-full rounded-xl border border-amber-900/40 px-3 py-2 text-sm font-medium text-cream-200 transition hover:border-amber-500 hover:text-amber-300"
+            >
+              Manage Plan
+            </button>
+          ) : (
+            <button
+              onClick={onUpgrade}
+              className="w-full rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-ground-950 transition hover:bg-amber-400"
+            >
+              Upgrade to Pro
+            </button>
+          )}
+        </section>
+      )}
     </div>
   );
 }

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { apiGet, apiDelete } from '../lib/api';
 import { currency } from '../lib/format';
 import Spinner from './Spinner';
-import AddJobModal from './AddJobModal';
 
 function Stat({ label, value, tone = 'text-cream-100' }) {
   return (
@@ -75,11 +74,10 @@ function ManualJobCard({ job, onDelete }) {
   );
 }
 
-export default function JobBoard({ refreshKey = 0, connected = true }) {
+export default function JobBoard({ refreshKey = 0, connected = true, onAddJob }) {
   const [qbJobs, setQbJobs] = useState(connected ? null : []);
   const [manualJobs, setManualJobs] = useState(null);
   const [error, setError] = useState(null);
-  const [addOpen, setAddOpen] = useState(false);
   const [localRefresh, setLocalRefresh] = useState(0);
 
   useEffect(() => {
@@ -121,7 +119,7 @@ export default function JobBoard({ refreshKey = 0, connected = true }) {
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-cream-50">Jobs</h2>
         <button
-          onClick={() => setAddOpen(true)}
+          onClick={onAddJob}
           className="rounded-lg bg-amber-500 px-3 py-1.5 text-sm font-semibold text-ground-950 transition hover:bg-amber-400"
         >
           + Add job
@@ -152,13 +150,6 @@ export default function JobBoard({ refreshKey = 0, connected = true }) {
             <JobCard key={`q-${job.id}`} job={job} />
           ))}
         </>
-      )}
-
-      {addOpen && (
-        <AddJobModal
-          onClose={() => setAddOpen(false)}
-          onCreated={() => setLocalRefresh((k) => k + 1)}
-        />
       )}
     </div>
   );

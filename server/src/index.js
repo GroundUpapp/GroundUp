@@ -7,6 +7,7 @@ import quickbooksAuthRoutes from './routes/quickbooksAuth.js';
 import quickbooksRoutes from './routes/quickbooks.js';
 import assistantRoutes from './routes/assistant.js';
 import jobsRoutes from './routes/jobs.js';
+import billingRoutes, { webhookHandler } from './routes/billing.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -17,6 +18,11 @@ app.use(
     credentials: true,
   })
 );
+
+// Stripe webhook needs the raw request body for signature verification, so it
+// MUST be registered before the JSON body parser.
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), webhookHandler);
+
 app.use(express.json());
 app.use(morgan('dev'));
 
@@ -28,6 +34,7 @@ app.use('/api', quickbooksAuthRoutes);
 app.use('/api', quickbooksRoutes);
 app.use('/api', assistantRoutes);
 app.use('/api', jobsRoutes);
+app.use('/api', billingRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
