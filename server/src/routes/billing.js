@@ -34,7 +34,8 @@ router.get('/billing/status', requireAuth, async (req, res) => {
 // POST /api/billing/checkout — Stripe Checkout session for Pro ($29/mo). Returns { url }.
 router.post('/billing/checkout', requireAuth, async (req, res) => {
   try {
-    if (!process.env.STRIPE_PRICE_ID) {
+    const priceId = process.env.STRIPE_PRICE_ID?.trim();
+    if (!priceId) {
       return res.status(503).json({ error: 'Billing is not configured yet.' });
     }
     const stripe = getStripe();
@@ -56,7 +57,7 @@ router.post('/billing/checkout', requireAuth, async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: customerId,
-      line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
+      line_items: [{ price: priceId, quantity: 1 }],
       client_reference_id: userId,
       subscription_data: { metadata: { user_id: userId } },
       allow_promotion_codes: true,
@@ -92,7 +93,7 @@ router.post('/billing/portal', requireAuth, async (req, res) => {
 
 // POST /api/billing/webhook — raw body (mounted before express.json in index.js).
 export async function webhookHandler(req, res) {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
   if (!secret) return res.status(503).send('Webhook not configured');
 
   let event;

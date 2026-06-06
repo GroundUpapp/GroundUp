@@ -6,7 +6,7 @@ let client = null;
 
 export function getStripe() {
   if (client) return client;
-  const key = process.env.STRIPE_SECRET_KEY;
+  const key = process.env.STRIPE_SECRET_KEY?.trim();
   if (!key) {
     throw new Error('Stripe is not configured (STRIPE_SECRET_KEY missing).');
   }
