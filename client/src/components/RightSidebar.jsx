@@ -83,7 +83,7 @@ export default function RightSidebar({ cashFlow }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="flex flex-col gap-4 p-4 xl:h-full">
       <section>
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-cream-300/60">
           90-Day Cash Flow
@@ -93,12 +93,12 @@ export default function RightSidebar({ cashFlow }) {
         </div>
       </section>
 
-      <section className="flex flex-col">
+      <section className="flex flex-col xl:min-h-0 xl:flex-1">
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-cream-300/60">
           AI Assistant
         </h3>
-        <div className="card flex flex-col overflow-hidden p-0">
-          <div className="max-h-[240px] overflow-y-auto space-y-2 p-3">
+        <div className="card flex flex-col overflow-hidden p-0 xl:min-h-0 xl:flex-1">
+          <div className="max-h-[240px] overflow-y-auto space-y-2 p-3 xl:max-h-none xl:min-h-0 xl:flex-1">
             {msgs.map((m) => (
               <div
                 key={m.id}

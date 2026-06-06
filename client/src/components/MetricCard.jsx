@@ -4,12 +4,12 @@ import { currency, percent } from '../lib/format';
 export default function MetricCard({ label, value, trend, hint }) {
   const up = trend != null && trend >= 0;
   return (
-    <div className="card">
-      <p className="text-sm font-medium text-cream-300">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-cream-50">
+    <div className="card xl:p-6">
+      <p className="text-sm font-medium text-cream-300 xl:text-base">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-cream-50 xl:mt-2 xl:text-4xl">
         {currency(value)}
       </p>
-      <div className="mt-1 flex items-center gap-2 text-xs">
+      <div className="mt-1 flex items-center gap-2 text-xs xl:mt-2 xl:text-sm">
         {trend != null && (
           <span
             className={`font-semibold ${

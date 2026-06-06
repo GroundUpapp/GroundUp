@@ -139,17 +139,17 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="min-h-screen">
+    <div className="flex min-h-screen flex-col">
       <DashboardHeader />
 
-      <div className="mx-auto flex max-w-[1440px]">
-        {/* Left sidebar — hidden below 900px */}
-        <aside className="hidden min-[900px]:block w-[220px] shrink-0 border-r border-amber-900/20">
+      <div className="mx-auto flex w-full max-w-[1440px] xl:max-w-[1600px] xl:flex-1">
+        {/* Left sidebar — hidden below 900px; narrower on desktop to match its content */}
+        <aside className="hidden min-[900px]:block w-[220px] xl:w-[200px] shrink-0 border-r border-amber-900/20">
           <LeftSidebar />
         </aside>
 
-        {/* Center content */}
-        <main className="flex-1 min-w-0 px-5 py-5 sm:px-8">
+        {/* Center content — min-height comes from the flex-1 row so the footer sits at the bottom */}
+        <main className="flex-1 min-w-0 px-5 py-5 sm:px-8 xl:px-10 xl:py-8">
           {loading && (
             <div className="flex justify-center py-20">
               <Spinner className="h-8 w-8" />
@@ -174,7 +174,7 @@ export default function Dashboard() {
                   </a>
                 </p>
               )}
-              <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="grid grid-cols-2 gap-3 mb-4 xl:gap-5 xl:mb-6">
                 <MetricCard
                   label="Cash on hand"
                   value={data.cashOnHand}
@@ -187,25 +187,29 @@ export default function Dashboard() {
                   change={`${data.outstandingInvoicesCount} open`}
                 />
               </div>
-              <HealthScore
-                score={data.healthScore}
-                label={data.healthLabel}
-                description={data.healthDescription}
-              />
-              <AlertList alerts={data.alerts} />
+              {/* Health score + alerts: stacked on mobile (display:contents keeps the
+                  original flow), side by side from 1280px up. */}
+              <div className="contents xl:grid xl:grid-cols-2 xl:gap-6 xl:mb-6 xl:items-stretch">
+                <HealthScore
+                  score={data.healthScore}
+                  label={data.healthLabel}
+                  description={data.healthDescription}
+                />
+                <AlertList alerts={data.alerts} />
+              </div>
               <JobProfitability jobs={data.jobs} />
             </>
           )}
         </main>
 
-        {/* Right sidebar — hidden below 900px */}
-        <aside className="hidden min-[900px]:block w-[260px] shrink-0 border-l border-amber-900/20">
+        {/* Right sidebar — hidden below 900px; wider on desktop for the chart + chat */}
+        <aside className="hidden min-[900px]:block w-[260px] xl:w-[300px] shrink-0 border-l border-amber-900/20">
           <RightSidebar cashFlow={cashFlow} />
         </aside>
       </div>
 
       <footer className="border-t border-amber-900/20">
-        <div className="mx-auto flex max-w-[1440px] flex-col items-center justify-between gap-3 px-5 py-6 text-xs text-cream-300/60 sm:flex-row">
+        <div className="mx-auto flex max-w-[1440px] xl:max-w-[1600px] flex-col items-center justify-between gap-3 px-5 py-6 text-xs text-cream-300/60 sm:flex-row">
           <span>© {new Date().getFullYear()} Raftas Financial Group · Ground Up</span>
           <nav className="flex items-center gap-5">
             <Link to="/privacy" className="hover:text-amber-300">
