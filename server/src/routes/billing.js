@@ -34,7 +34,12 @@ router.get('/billing/status', requireAuth, async (req, res) => {
 // POST /api/billing/checkout — Stripe Checkout session for Pro ($29/mo). Returns { url }.
 router.post('/billing/checkout', requireAuth, async (req, res) => {
   try {
-    const priceId = process.env.STRIPE_PRICE_ID?.trim();
+    const plan = req.body?.plan === 'pro' ? 'pro' : 'solo';
+    const priceId = (
+      plan === 'pro'
+        ? process.env.STRIPE_PRICE_ID_PRO
+        : process.env.STRIPE_PRICE_ID_SOLO || process.env.STRIPE_PRICE_ID
+    )?.trim();
     if (!priceId) {
       return res.status(503).json({ error: 'Billing is not configured yet.' });
     }
@@ -59,7 +64,7 @@ router.post('/billing/checkout', requireAuth, async (req, res) => {
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
       client_reference_id: userId,
-      subscription_data: { metadata: { user_id: userId } },
+      subscription_data: { metadata: { user_id: userId, plan } },
       allow_promotion_codes: true,
       success_url: `${origin}/dashboard?subscribed=true`,
       cancel_url: `${origin}/dashboard`,
@@ -116,7 +121,7 @@ export async function webhookHandler(req, res) {
           await updateByUser(userId, {
             stripe_customer_id: s.customer || undefined,
             stripe_subscription_id: s.subscription || undefined,
-            plan: 'pro',
+            plan: sub?.metadata?.plan || 'solo',
             status: sub?.status || 'active',
             current_period_ends_at: periodEndIso(sub),
           });
@@ -129,7 +134,7 @@ export async function webhookHandler(req, res) {
         await updateByCustomer(sub.customer, {
           stripe_subscription_id: sub.id,
           status: sub.status,
-          plan: active ? 'pro' : 'free',
+          plan: active ? sub.metadata?.plan || 'pro' : 'free',
           current_period_ends_at: periodEndIso(sub),
         });
         break;

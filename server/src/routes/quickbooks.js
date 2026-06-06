@@ -15,6 +15,7 @@ import {
   createExpense,
   sendInvoiceReminder,
 } from '../services/qboExtra.js';
+import { remindedWithin7Days, logReminder } from '../services/reminderLog.js';
 
 const router = Router();
 
@@ -103,10 +104,24 @@ router.post('/quickbooks/invoices', requireAuth, requireQuickBooks, async (req, 
   }
 });
 
-// POST /api/quickbooks/invoices/:id/remind — re-send the invoice as a reminder.
+// POST /api/quickbooks/invoices/:id/remind — AI-drafted reminder, emailed via QBO.
 router.post('/quickbooks/invoices/:id/remind', requireAuth, requireQuickBooks, async (req, res) => {
   try {
-    res.json(await sendInvoiceReminder(req.qbo, req.params.id, req.body?.email));
+    const userId = req.user.id;
+    const invoiceId = req.params.id;
+    if (await remindedWithin7Days(userId, invoiceId)) {
+      return res
+        .status(429)
+        .json({ error: 'You already reminded this customer in the last 7 days.' });
+    }
+    const result = await sendInvoiceReminder(
+      req.qbo,
+      invoiceId,
+      req.body?.email,
+      req.quickbooks.realmId
+    );
+    await logReminder(userId, invoiceId, result.customer);
+    res.json(result);
   } catch (err) {
     console.error('QuickBooks remind error:', err);
     res.status(400).json({ error: err.message || 'Failed to send reminder' });

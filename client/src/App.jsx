@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import Landing from './pages/Landing';
 import Login from './pages/Login';
 import SignUp from './pages/SignUp';
 import Dashboard from './pages/Dashboard';
@@ -12,29 +13,31 @@ export default function App() {
 
   return (
     <Routes>
-      {/* Auth routes redirect to the dashboard if already signed in */}
-      {/* Public legal pages — accessible without signing in (for app review) */}
+      {/* Public marketing landing page. Signed-in users go straight to the app. */}
+      <Route path="/" element={session ? <Navigate to="/app" replace /> : <Landing />} />
+
+      {/* Public legal pages */}
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
 
       <Route
         path="/login"
-        element={session ? <Navigate to="/" replace /> : <Login />}
+        element={session ? <Navigate to="/app" replace /> : <Login />}
       />
       <Route
         path="/signup"
-        element={session ? <Navigate to="/" replace /> : <SignUp />}
+        element={session ? <Navigate to="/app" replace /> : <SignUp />}
       />
 
+      {/* The app, behind auth. /dashboard is kept as the QuickBooks OAuth landing. */}
       <Route
-        path="/"
+        path="/app"
         element={
           <ProtectedRoute>
             <Dashboard />
           </ProtectedRoute>
         }
       />
-      {/* Alias — QuickBooks OAuth redirects land here after the round-trip */}
       <Route
         path="/dashboard"
         element={

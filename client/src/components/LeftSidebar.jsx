@@ -68,7 +68,7 @@ export default function LeftSidebar({ onNewInvoice, onLogExpense, onAddJob, bill
               onClick={onUpgrade}
               className="w-full rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-ground-950 transition hover:bg-amber-400"
             >
-              Upgrade to Pro
+              Upgrade
             </button>
           )}
         </section>

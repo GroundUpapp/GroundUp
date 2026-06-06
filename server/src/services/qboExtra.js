@@ -9,6 +9,7 @@
  * defensive: QBO company files vary, so helpers fall back rather than throw.
  */
 import { call, asArray, num, ymd } from './qboData.js';
+import { generateReminderDraft } from './aiInsight.js';
 
 function daysBetween(fromYmd, toDate = new Date()) {
   if (!fromYmd) return 0;
@@ -338,15 +339,43 @@ export async function createExpense(qbo, { payee, amount, category = 'other', jo
   };
 }
 
-/** Re-send an invoice's PDF as a payment reminder. */
-export async function sendInvoiceReminder(qbo, invoiceId, fallbackEmail) {
+/**
+ * Send a payment reminder for an overdue invoice. Drafts a firm, professional
+ * note with the AI (returned/logged), then emails the invoice via QuickBooks'
+ * email API (sendInvoicePdf). Returns the customer + draft for the UI.
+ */
+export async function sendInvoiceReminder(qbo, invoiceId, fallbackEmail, realmId) {
   if (!invoiceId) throw new Error('Missing invoice.');
-  let email = fallbackEmail;
-  if (!email) {
-    const inv = await call(qbo, 'getInvoice', String(invoiceId));
-    email = inv?.BillEmail?.Address;
-  }
+
+  const inv = await call(qbo, 'getInvoice', String(invoiceId));
+  const email = fallbackEmail || inv?.BillEmail?.Address;
   if (!email) throw new Error('No email on file for this customer.');
+
+  const customer = inv?.CustomerRef?.name || 'Customer';
+  const amount = num(inv?.Balance);
+  const due = inv?.DueDate;
+  const daysOverdue = due
+    ? Math.max(0, Math.floor((Date.now() - Date.parse(`${due}T00:00:00Z`)) / 86_400_000))
+    : 0;
+
+  let companyName = null;
+  if (realmId) {
+    try {
+      const company = await call(qbo, 'getCompanyInfo', realmId);
+      companyName = company?.CompanyName || null;
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  const draft = await generateReminderDraft({
+    customer,
+    amount,
+    daysOverdue,
+    companyName,
+    invoiceNumber: inv?.DocNumber,
+  });
+
   await call(qbo, 'sendInvoicePdf', String(invoiceId), email);
-  return { sent: true, email };
+  return { sent: true, email, customer, draft };
 }

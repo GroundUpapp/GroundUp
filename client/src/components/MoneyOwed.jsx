@@ -3,7 +3,7 @@ import { apiGet, apiPost } from '../lib/api';
 import { currency } from '../lib/format';
 import Spinner from './Spinner';
 
-function Row({ inv }) {
+function Row({ inv, onToast }) {
   const [state, setState] = useState('idle'); // idle | sending | sent | error
   const [msg, setMsg] = useState(null);
   const veryLate = inv.daysOverdue > 30;
@@ -15,7 +15,7 @@ function Row({ inv }) {
     try {
       const r = await apiPost(`/quickbooks/invoices/${inv.id}/remind`, { email: inv.email });
       setState('sent');
-      setMsg(`Sent to ${r.email}`);
+      onToast?.(`Reminder sent to ${r.customer || inv.customer}`);
     } catch (e) {
       setState('error');
       setMsg(e.message);
@@ -64,6 +64,7 @@ function Row({ inv }) {
 export default function MoneyOwed({ refreshKey = 0 }) {
   const [owed, setOwed] = useState(null);
   const [error, setError] = useState(null);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -76,6 +77,12 @@ export default function MoneyOwed({ refreshKey = 0 }) {
       active = false;
     };
   }, [refreshKey]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   if (error) {
     return <p className="card text-center text-sm text-red-300">Couldn't load money owed. {error}</p>;
@@ -109,7 +116,15 @@ export default function MoneyOwed({ refreshKey = 0 }) {
           Nothing outstanding — everybody's paid up. 🎉
         </p>
       ) : (
-        owed.map((inv) => <Row key={inv.id} inv={inv} />)
+        owed.map((inv) => <Row key={inv.id} inv={inv} onToast={setToast} />)
+      )}
+
+      {toast && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-5 z-50 flex justify-center px-4">
+          <div className="select-none rounded-xl border border-amber-500/40 bg-ground-800 px-4 py-2.5 text-sm font-medium text-cream-50 shadow-glow">
+            {toast}
+          </div>
+        </div>
       )}
     </div>
   );

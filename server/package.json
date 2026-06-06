@@ -16,6 +16,7 @@
     "intuit-oauth": "^4.2.3",
     "morgan": "^1.10.0",
     "node-quickbooks": "^2.0.50",
+    "resend": "^6.12.4",
     "stripe": "^22.2.0"
   }
 }

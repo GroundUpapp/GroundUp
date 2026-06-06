@@ -8,6 +8,7 @@ import quickbooksRoutes from './routes/quickbooks.js';
 import assistantRoutes from './routes/assistant.js';
 import jobsRoutes from './routes/jobs.js';
 import billingRoutes, { webhookHandler } from './routes/billing.js';
+import cronRoutes from './routes/cron.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -35,6 +36,7 @@ app.use('/api', quickbooksRoutes);
 app.use('/api', assistantRoutes);
 app.use('/api', jobsRoutes);
 app.use('/api', billingRoutes);
+app.use('/api', cronRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 

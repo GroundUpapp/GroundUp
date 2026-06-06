@@ -38,7 +38,7 @@ export default function SignUp() {
       setNotice('Check your email to confirm your account, then sign in.');
       return;
     }
-    navigate('/', { replace: true });
+    navigate('/app', { replace: true });
   }
 
   return (

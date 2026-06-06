@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiGet, apiPost } from '../lib/api';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import { currency } from '../lib/format';
+import Onboarding from '../components/Onboarding';
 import DashboardHeader from '../components/DashboardHeader';
 import MetricCard from '../components/MetricCard';
 import HealthScore from '../components/HealthScore';
@@ -125,10 +127,10 @@ function UpgradeGate({ onUpgrade, busy, error }) {
           Upgrade to Ground Up Pro to keep your dashboard, invoices, and AI assistant.
         </p>
         <p className="mt-4 text-3xl font-extrabold text-amber-400">
-          $29<span className="text-base font-medium text-cream-300">/month</span>
+          $49<span className="text-base font-medium text-cream-300">/month</span>
         </p>
         <button onClick={onUpgrade} disabled={busy} className="btn-primary mt-4">
-          {busy ? 'Starting…' : 'Start for $29/month'}
+          {busy ? 'Starting…' : 'Start for $49/month'}
         </button>
         {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
         <p className="mt-3 text-xs text-cream-300/50">Cancel anytime.</p>
@@ -138,12 +140,28 @@ function UpgradeGate({ onUpgrade, busy, error }) {
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [data, setData] = useState(null);
   const [cashFlow, setCashFlow] = useState(null);
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [connectUrl, setConnectUrl] = useState('#');
   const [disconnectUrl, setDisconnectUrl] = useState('#');
+
+  // Onboarding: show the 3-step welcome to brand-new users (not onboarded and
+  // no QuickBooks yet, or just returned from a successful connect).
+  const onboarded = user?.user_metadata?.onboarded === true;
+  const justConnected =
+    new URLSearchParams(window.location.search).get('quickbooks') === 'connected';
+  const showOnboarding = !onboarded && (!connected || justConnected);
+
+  async function markOnboarded() {
+    try {
+      await supabase.auth.updateUser({ data: { onboarded: true } });
+    } catch (e) {
+      console.error('Failed to mark onboarding complete:', e.message);
+    }
+  }
 
   const [billing, setBilling] = useState(null);
   const [billingBusy, setBillingBusy] = useState(false);
@@ -235,6 +253,15 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Existing users who already connected QuickBooks shouldn't see onboarding —
+  // silently mark them complete.
+  useEffect(() => {
+    if (!loading && !onboarded && connected && !justConnected) {
+      markOnboarded();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, onboarded, connected]);
+
   const connectBanner = (
     <div className="card mb-4 text-center">
       <p className="text-sm text-cream-200">Connect QuickBooks to see your real numbers.</p>
@@ -270,6 +297,12 @@ export default function Dashboard() {
             <div className="flex justify-center py-20">
               <Spinner className="h-8 w-8" />
             </div>
+          ) : showOnboarding ? (
+            <Onboarding
+              connectUrl={connectUrl}
+              justConnected={justConnected}
+              onComplete={markOnboarded}
+            />
           ) : billing && !billing.access ? (
             <UpgradeGate onUpgrade={startCheckout} busy={billingBusy} error={billingError} />
           ) : (
