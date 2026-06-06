@@ -7,7 +7,7 @@
  * throwing on an unexpected shape.
  */
 
-function call(qbo, method, ...args) {
+export function call(qbo, method, ...args) {
   return new Promise((resolve, reject) => {
     qbo[method](...args, (err, data) => {
       if (err) reject(err instanceof Error ? err : new Error(JSON.stringify(err)));
@@ -16,18 +16,18 @@ function call(qbo, method, ...args) {
   });
 }
 
-function asArray(x) {
+export function asArray(x) {
   if (!x) return [];
   return Array.isArray(x) ? x : [x];
 }
 
-function num(v) {
+export function num(v) {
   if (v == null) return 0;
   const n = parseFloat(String(v).replace(/[^0-9.-]/g, ''));
   return Number.isFinite(n) ? n : 0;
 }
 
-function ymd(d) {
+export function ymd(d) {
   return d.toISOString().slice(0, 10);
 }
 

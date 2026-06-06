@@ -10,6 +10,11 @@ import AlertList from '../components/AlertList';
 import JobProfitability from '../components/JobProfitability';
 import LeftSidebar from '../components/LeftSidebar';
 import RightSidebar from '../components/RightSidebar';
+import MoneyOwed from '../components/MoneyOwed';
+import JobBoard from '../components/JobBoard';
+import AiAssistant from '../components/AiAssistant';
+import NewInvoiceModal from '../components/NewInvoiceModal';
+import LogExpenseModal from '../components/LogExpenseModal';
 import Spinner from '../components/Spinner';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -43,8 +48,6 @@ async function authActionUrl(path) {
   return `${API_BASE}/api${path}?token=${encodeURIComponent(token)}`;
 }
 
-// Lightweight health heuristic from live figures, mirroring the server's
-// blend of cash strength vs. receivables drag.
 function deriveHealth({ cashOnHand, outstandingReceivables }) {
   const ratio = cashOnHand > 0 ? outstandingReceivables / cashOnHand : 1;
   const score = Math.max(0, Math.min(100, Math.round(85 - ratio * 40)));
@@ -87,18 +90,31 @@ function toDashboardData(summary, invoices) {
   };
 }
 
+const TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'money', label: 'Money Owed' },
+  { id: 'jobs', label: 'Jobs' },
+  { id: 'ask', label: 'Ask', mobileOnly: true },
+];
+
 export default function Dashboard() {
   const [data, setData] = useState(null);
   const [cashFlow, setCashFlow] = useState(null);
+  const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [connectUrl, setConnectUrl] = useState('#');
   const [disconnectUrl, setDisconnectUrl] = useState('#');
+
+  const [view, setView] = useState('overview');
+  const [modal, setModal] = useState(null); // 'invoice' | 'expense' | null
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refresh = () => setRefreshKey((k) => k + 1);
 
   useEffect(() => {
     let active = true;
 
     (async () => {
-      // Prepare the connect/disconnect navigation URLs (need the session token).
       const [cUrl, dUrl] = await Promise.all([
         authActionUrl('/auth/quickbooks'),
         authActionUrl('/auth/quickbooks/disconnect'),
@@ -110,6 +126,7 @@ export default function Dashboard() {
       try {
         const status = await apiGet('/auth/quickbooks/status');
         if (!active) return;
+        setConnected(!!status.connected);
 
         if (status.connected) {
           const [summary, invRes, cfRes] = await Promise.all([
@@ -118,16 +135,16 @@ export default function Dashboard() {
             apiGet('/quickbooks/cashflow'),
           ]);
           if (!active) return;
-          const invoices = invRes.invoices || [];
-          setData(toDashboardData(summary, invoices));
+          setData(toDashboardData(summary, invRes.invoices || []));
           setCashFlow((cfRes.cashflow || []).map((d) => d.net));
         } else {
           setData(SAMPLE_DATA);
         }
       } catch {
-        // Any failure (not connected, expired link, QB error) falls back to
-        // sample data with the connect banner.
-        if (active) setData(SAMPLE_DATA);
+        if (active) {
+          setConnected(false);
+          setData(SAMPLE_DATA);
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -136,75 +153,134 @@ export default function Dashboard() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refreshKey]);
+
+  const connectBanner = (
+    <div className="card mb-4 text-center">
+      <p className="text-sm text-cream-200">Connect QuickBooks to see your real numbers.</p>
+      <a
+        href={connectUrl}
+        className="mt-2 inline-block rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-ground-950 hover:bg-amber-400"
+      >
+        Connect QuickBooks
+      </a>
+    </div>
+  );
 
   return (
     <div className="flex min-h-screen flex-col">
       <DashboardHeader />
 
       <div className="mx-auto flex w-full max-w-[1440px] xl:max-w-[1600px] xl:flex-1">
-        {/* Left sidebar — hidden below 900px; narrower on desktop to match its content */}
+        {/* Left sidebar — hidden below 900px */}
         <aside className="hidden min-[900px]:block w-[220px] xl:w-[200px] shrink-0 border-r border-amber-900/20">
-          <LeftSidebar />
+          <LeftSidebar
+            onNewInvoice={() => setModal('invoice')}
+            onLogExpense={() => setModal('expense')}
+          />
         </aside>
 
-        {/* Center content — min-height comes from the flex-1 row so the footer sits at the bottom */}
+        {/* Center content */}
         <main className="flex-1 min-w-0 px-5 py-5 sm:px-8 xl:px-10 xl:py-8">
-          {loading && (
+          {loading ? (
             <div className="flex justify-center py-20">
               <Spinner className="h-8 w-8" />
             </div>
-          )}
-
-          {!loading && data && (
+          ) : (
             <>
-              {data.usingMockData ? (
-                <p className="mb-3 rounded bg-amber-900/40 px-3 py-2 text-center text-xs text-amber-300">
-                  Showing sample data —{' '}
-                  <a href={connectUrl} className="font-semibold underline hover:text-amber-200">
-                    connect QuickBooks
-                  </a>{' '}
-                  to see live numbers.
-                </p>
-              ) : (
-                <p className="mb-3 text-center text-xs text-cream-300/60">
-                  QuickBooks connected ·{' '}
-                  <a href={disconnectUrl} className="font-semibold text-amber-300 hover:text-amber-200">
-                    Disconnect
-                  </a>
-                </p>
+              {/* Mobile quick actions (sidebar is hidden on phones) */}
+              <div className="mb-4 grid grid-cols-2 gap-3 min-[900px]:hidden">
+                <button
+                  onClick={() => setModal('invoice')}
+                  className="rounded-xl bg-amber-500 px-3 py-3 text-sm font-semibold text-ground-950 active:scale-[0.98]"
+                >
+                  + New Invoice
+                </button>
+                <button
+                  onClick={() => setModal('expense')}
+                  className="rounded-xl border border-amber-900/40 px-3 py-3 text-sm font-medium text-cream-200 active:scale-[0.98]"
+                >
+                  Log Expense
+                </button>
+              </div>
+
+              {/* Tabs */}
+              <div className="mb-4 flex gap-1 overflow-x-auto border-b border-amber-900/20">
+                {TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setView(t.id)}
+                    className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-semibold transition ${
+                      t.mobileOnly ? 'min-[900px]:hidden' : ''
+                    } ${
+                      view === t.id
+                        ? 'border-amber-500 text-amber-300'
+                        : 'border-transparent text-cream-300/60 hover:text-cream-100'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Overview */}
+              {view === 'overview' && data && (
+                <>
+                  {data.usingMockData ? (
+                    <p className="mb-3 rounded bg-amber-900/40 px-3 py-2 text-center text-xs text-amber-300">
+                      Showing sample data —{' '}
+                      <a href={connectUrl} className="font-semibold underline hover:text-amber-200">
+                        connect QuickBooks
+                      </a>{' '}
+                      to see live numbers.
+                    </p>
+                  ) : (
+                    <p className="mb-3 text-center text-xs text-cream-300/60">
+                      QuickBooks connected ·{' '}
+                      <a href={disconnectUrl} className="font-semibold text-amber-300 hover:text-amber-200">
+                        Disconnect
+                      </a>
+                    </p>
+                  )}
+                  <div className="grid grid-cols-2 gap-3 mb-4 xl:gap-5 xl:mb-6">
+                    <MetricCard label="Cash on hand" value={data.cashOnHand} positive />
+                    <MetricCard
+                      label="Money owed to you"
+                      value={data.outstandingInvoices}
+                      change={`${data.outstandingInvoicesCount} open`}
+                    />
+                  </div>
+                  <div className="contents xl:grid xl:grid-cols-2 xl:gap-6 xl:mb-6 xl:items-stretch">
+                    <HealthScore
+                      score={data.healthScore}
+                      label={data.healthLabel}
+                      description={data.healthDescription}
+                    />
+                    <AlertList alerts={data.alerts} />
+                  </div>
+                  <JobProfitability jobs={data.jobs} />
+                </>
               )}
-              <div className="grid grid-cols-2 gap-3 mb-4 xl:gap-5 xl:mb-6">
-                <MetricCard
-                  label="Cash on hand"
-                  value={data.cashOnHand}
-                  change={`+${data.cashOnHandChange}%`}
-                  positive
-                />
-                <MetricCard
-                  label="Outstanding invoices"
-                  value={data.outstandingInvoices}
-                  change={`${data.outstandingInvoicesCount} open`}
-                />
-              </div>
-              {/* Health score + alerts: stacked on mobile (display:contents keeps the
-                  original flow), side by side from 1280px up. */}
-              <div className="contents xl:grid xl:grid-cols-2 xl:gap-6 xl:mb-6 xl:items-stretch">
-                <HealthScore
-                  score={data.healthScore}
-                  label={data.healthLabel}
-                  description={data.healthDescription}
-                />
-                <AlertList alerts={data.alerts} />
-              </div>
-              <JobProfitability jobs={data.jobs} />
+
+              {/* Money Owed */}
+              {view === 'money' && (connected ? <MoneyOwed refreshKey={refreshKey} /> : connectBanner)}
+
+              {/* Jobs */}
+              {view === 'jobs' && (connected ? <JobBoard refreshKey={refreshKey} /> : connectBanner)}
+
+              {/* Ask (mobile only — desktop has the assistant in the sidebar) */}
+              {view === 'ask' && (
+                <div className="h-[70vh]">
+                  <AiAssistant connected={connected} />
+                </div>
+              )}
             </>
           )}
         </main>
 
-        {/* Right sidebar — hidden below 900px; wider on desktop for the chart + chat */}
+        {/* Right sidebar — hidden below 900px */}
         <aside className="hidden min-[900px]:block w-[260px] xl:w-[300px] shrink-0 border-l border-amber-900/20">
-          <RightSidebar cashFlow={cashFlow} />
+          <RightSidebar cashFlow={cashFlow} connected={connected} />
         </aside>
       </div>
 
@@ -221,6 +297,19 @@ export default function Dashboard() {
           </nav>
         </div>
       </footer>
+
+      {modal === 'invoice' && (
+        <NewInvoiceModal
+          onClose={() => setModal(null)}
+          onCreated={() => {
+            refresh();
+            setView('money');
+          }}
+        />
+      )}
+      {modal === 'expense' && (
+        <LogExpenseModal onClose={() => setModal(null)} onCreated={refresh} />
+      )}
     </div>
   );
 }
