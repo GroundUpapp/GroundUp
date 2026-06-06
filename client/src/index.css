@@ -19,6 +19,18 @@
       radial-gradient(120% 60% at 50% -10%, rgba(232, 144, 13, 0.10), transparent 60%),
       theme('colors.ground.950');
   }
+
+  /* Clickable chrome: always a pointer cursor, never selectable as text. */
+  button,
+  [role='button'] {
+    @apply cursor-pointer select-none;
+  }
+  button:disabled {
+    @apply cursor-not-allowed;
+  }
+  a {
+    @apply cursor-pointer;
+  }
 }
 
 @layer components {

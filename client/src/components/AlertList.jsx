@@ -7,7 +7,7 @@ const STYLES = {
 export default function AlertList({ alerts = [] }) {
   return (
     <div className="card">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex select-none items-center justify-between">
         <h2 className="font-semibold text-cream-50">AI Alerts</h2>
         <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-300">
           {alerts.length}

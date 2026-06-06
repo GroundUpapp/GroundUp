@@ -2,7 +2,7 @@
 export default function Brand({ size = 'lg' }) {
   const big = size === 'lg';
   return (
-    <div className="flex items-center gap-2.5">
+    <div className="flex select-none items-center gap-2.5">
       <div
         className={`grid place-items-center rounded-xl bg-amber-500 text-ground-950 ${
           big ? 'h-10 w-10' : 'h-8 w-8'

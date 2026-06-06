@@ -68,7 +68,7 @@ export default function AiAssistant({ connected = true }) {
 
   return (
     <div className="card flex h-full min-h-0 flex-col overflow-hidden p-0">
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+      <div ref={scrollRef} className="min-h-0 flex-1 select-text space-y-2 overflow-y-auto p-3">
         {messages.map((m, i) => (
           <div
             key={i}

@@ -9,7 +9,7 @@ const RECENT = [
 export default function LeftSidebar({ onNewInvoice, onLogExpense, onAddJob, billing, onUpgrade, onManage }) {
   const isPro = billing?.status === 'active';
   return (
-    <div className="flex h-full flex-col gap-6 p-4">
+    <div className="flex h-full select-none flex-col gap-6 p-4">
       <section>
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-cream-300/60">
           Quick Actions

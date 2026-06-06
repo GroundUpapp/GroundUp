@@ -5,7 +5,7 @@ export default function DashboardHeader() {
   const { user, signOut } = useAuth();
 
   return (
-    <header className="sticky top-0 z-10 w-full border-b border-amber-900/20 bg-ground-950/80 backdrop-blur">
+    <header className="sticky top-0 z-10 w-full select-none border-b border-amber-900/20 bg-ground-950/80 backdrop-blur">
       <div className="mx-auto flex max-w-[1440px] items-center justify-between px-5 py-3">
         <Brand size="sm" />
         <div className="flex items-center gap-3">

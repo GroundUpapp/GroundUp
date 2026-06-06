@@ -101,7 +101,7 @@ const TABS = [
 // Subtle banner during the free trial.
 function TrialBanner({ days, onUpgrade }) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-950/30 px-4 py-2.5 text-sm">
+    <div className="mb-4 flex select-none items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-950/30 px-4 py-2.5 text-sm">
       <span className="text-amber-200">
         Your free trial ends in <strong>{days} {days === 1 ? 'day' : 'days'}</strong> — upgrade to keep access.
       </span>
@@ -118,7 +118,7 @@ function TrialBanner({ days, onUpgrade }) {
 // Shown in place of the dashboard once the trial has ended and there's no plan.
 function UpgradeGate({ onUpgrade, busy, error }) {
   return (
-    <div className="mx-auto max-w-md py-10 text-center">
+    <div className="mx-auto max-w-md select-none py-10 text-center">
       <div className="card">
         <h2 className="text-2xl font-bold text-cream-50">Your free trial has ended</h2>
         <p className="mt-2 text-cream-300">
@@ -287,20 +287,20 @@ export default function Dashboard() {
               <div className="mb-4 space-y-3 min-[900px]:hidden">
                 <button
                   onClick={() => setModal('invoice')}
-                  className="w-full rounded-xl bg-amber-500 px-3 py-3 text-sm font-semibold text-ground-950 active:scale-[0.98]"
+                  className="w-full rounded-xl bg-amber-500 px-3 py-3 text-sm font-semibold text-ground-950 transition hover:bg-amber-400 active:scale-[0.98]"
                 >
                   + New Invoice
                 </button>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => setModal('expense')}
-                    className="rounded-xl border border-amber-900/40 px-3 py-3 text-sm font-medium text-cream-200 active:scale-[0.98]"
+                    className="rounded-xl border border-amber-900/40 px-3 py-3 text-sm font-medium text-cream-200 transition hover:border-amber-500 hover:text-amber-300 active:scale-[0.98]"
                   >
                     Log Expense
                   </button>
                   <button
                     onClick={() => setModal('job')}
-                    className="rounded-xl border border-amber-900/40 px-3 py-3 text-sm font-medium text-cream-200 active:scale-[0.98]"
+                    className="rounded-xl border border-amber-900/40 px-3 py-3 text-sm font-medium text-cream-200 transition hover:border-amber-500 hover:text-amber-300 active:scale-[0.98]"
                   >
                     Add Job
                   </button>
@@ -330,7 +330,7 @@ export default function Dashboard() {
               {view === 'overview' && data && (
                 <>
                   {data.usingMockData ? (
-                    <p className="mb-3 rounded bg-amber-900/40 px-3 py-2 text-center text-xs text-amber-300">
+                    <p className="mb-3 select-none rounded bg-amber-900/40 px-3 py-2 text-center text-xs text-amber-300">
                       Showing sample data —{' '}
                       <a href={connectUrl} className="font-semibold underline hover:text-amber-200">
                         connect QuickBooks
@@ -338,7 +338,7 @@ export default function Dashboard() {
                       to see live numbers.
                     </p>
                   ) : (
-                    <p className="mb-3 text-center text-xs text-cream-300/60">
+                    <p className="mb-3 select-none text-center text-xs text-cream-300/60">
                       QuickBooks connected ·{' '}
                       <a href={disconnectUrl} className="font-semibold text-amber-300 hover:text-amber-200">
                         Disconnect
@@ -393,7 +393,7 @@ export default function Dashboard() {
         </aside>
       </div>
 
-      <footer className="border-t border-amber-900/20">
+      <footer className="select-none border-t border-amber-900/20">
         <div className="mx-auto flex max-w-[1440px] xl:max-w-[1600px] flex-col items-center justify-between gap-3 px-5 py-6 text-xs text-cream-300/60 sm:flex-row">
           <span>© {new Date().getFullYear()} Raftas Financial Group · Ground Up</span>
           <nav className="flex items-center gap-5">

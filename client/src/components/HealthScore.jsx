@@ -13,7 +13,7 @@ export default function HealthScore({ score = 0, label }) {
       : { stroke: '#f87171', text: 'text-red-400', word: 'At risk' };
 
   return (
-    <div className="card flex items-center gap-5">
+    <div className="card flex select-none items-center gap-5">
       <div className="relative h-32 w-32 shrink-0">
         <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90">
           <circle

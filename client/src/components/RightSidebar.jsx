@@ -55,7 +55,7 @@ function CashFlowChart({ data }) {
 
 export default function RightSidebar({ cashFlow, connected = true }) {
   return (
-    <div className="flex flex-col gap-4 p-4 xl:h-full">
+    <div className="flex select-none flex-col gap-4 p-4 xl:h-full">
       <section>
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-cream-300/60">
           90-Day Cash Flow

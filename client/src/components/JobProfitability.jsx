@@ -4,7 +4,7 @@ import { currency } from '../lib/format';
 export default function JobProfitability({ jobs = [] }) {
   return (
     <div className="card">
-      <h2 className="mb-3 font-semibold text-cream-50">Job profitability</h2>
+      <h2 className="mb-3 select-none font-semibold text-cream-50">Job profitability</h2>
 
       {jobs.length === 0 ? (
         <p className="py-4 text-center text-sm text-cream-300/70">

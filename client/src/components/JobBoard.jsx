@@ -6,7 +6,7 @@ import Spinner from './Spinner';
 function Stat({ label, value, tone = 'text-cream-100' }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] uppercase tracking-wide text-cream-300/50">{label}</p>
+      <p className="select-none text-[11px] uppercase tracking-wide text-cream-300/50">{label}</p>
       <p className={`truncate text-sm font-semibold ${tone}`}>{value}</p>
     </div>
   );
@@ -24,7 +24,7 @@ function JobCard({ job }) {
           <p className={`text-lg font-bold ${cutPositive ? 'text-emerald-400' : 'text-red-400'}`}>
             {currency(job.cut)}
           </p>
-          <p className="text-[11px] uppercase tracking-wide text-cream-300/50">your cut</p>
+          <p className="select-none text-[11px] uppercase tracking-wide text-cream-300/50">your cut</p>
         </div>
       </div>
       <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-ground-800">
@@ -52,7 +52,7 @@ function ManualJobCard({ job, onDelete }) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <p className="min-w-0 truncate font-semibold text-cream-50">{job.name}</p>
-            <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+            <span className="shrink-0 select-none rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
               Added by hand
             </span>
           </div>
@@ -116,7 +116,7 @@ export default function JobBoard({ refreshKey = 0, connected = true, onAddJob })
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex select-none items-center justify-between">
         <h2 className="font-semibold text-cream-50">Jobs</h2>
         <button
           onClick={onAddJob}
@@ -127,7 +127,7 @@ export default function JobBoard({ refreshKey = 0, connected = true, onAddJob })
       </div>
 
       {!connected && (
-        <p className="rounded bg-amber-900/40 px-3 py-2 text-center text-xs text-amber-300">
+        <p className="select-none rounded bg-amber-900/40 px-3 py-2 text-center text-xs text-amber-300">
           Connect QuickBooks to see billed, collected, and your cut on each job.
         </p>
       )}

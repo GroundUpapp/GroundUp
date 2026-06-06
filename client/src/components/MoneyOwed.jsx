@@ -94,10 +94,10 @@ export default function MoneyOwed({ refreshKey = 0 }) {
     <div className="space-y-3">
       <div className="card flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-cream-300">Money owed to you</p>
+          <p className="select-none text-sm font-medium text-cream-300">Money owed to you</p>
           <p className="text-3xl font-bold text-cream-50">{currency(total)}</p>
         </div>
-        <p className="text-right text-sm text-cream-300/70">
+        <p className="select-none text-right text-sm text-cream-300/70">
           {owed.length} unpaid
           <br />
           {owed.filter((i) => i.daysOverdue > 30).length} over 30 days
