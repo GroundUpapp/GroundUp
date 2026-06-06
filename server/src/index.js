@@ -6,6 +6,7 @@ import dashboardRoutes from './routes/dashboard.js';
 import quickbooksAuthRoutes from './routes/quickbooksAuth.js';
 import quickbooksRoutes from './routes/quickbooks.js';
 import assistantRoutes from './routes/assistant.js';
+import jobsRoutes from './routes/jobs.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -26,6 +27,7 @@ app.use('/api', dashboardRoutes);
 app.use('/api', quickbooksAuthRoutes);
 app.use('/api', quickbooksRoutes);
 app.use('/api', assistantRoutes);
+app.use('/api', jobsRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 

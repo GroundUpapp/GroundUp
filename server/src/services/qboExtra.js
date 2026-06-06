@@ -21,6 +21,24 @@ function daysBetween(fromYmd, toDate = new Date()) {
 // Reads
 // ---------------------------------------------------------------------------
 
+/** Sellable items for the invoice line picker: { id, name, rate, type }. */
+export async function getItems(qbo) {
+  const res = await call(qbo, 'findItems', { fetchAll: true });
+  return asArray(res?.QueryResponse?.Item)
+    .filter(
+      (i) =>
+        i.Active !== false &&
+        ['Service', 'NonInventory', 'Inventory'].includes(i.Type)
+    )
+    .map((i) => ({
+      id: i.Id,
+      name: i.FullyQualifiedName || i.Name,
+      rate: num(i.UnitPrice) || null,
+      type: i.Type,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** Active customers for the invoice / expense pickers: { id, name, email }. */
 export async function getCustomers(qbo) {
   const res = await call(qbo, 'findCustomers', { fetchAll: true });
@@ -232,17 +250,23 @@ export async function createInvoice(qbo, { customerId, customerEmail, lineItems 
       description: String(l.description || '').trim(),
       qty: num(l.qty) || 1,
       rate: num(l.rate),
+      itemId: l.itemId ? String(l.itemId) : null,
     }))
     .filter((l) => l.description || l.rate);
   if (clean.length === 0) throw new Error('Add at least one line item.');
 
-  const item = await resolveDefaultItem(qbo);
+  // Only fall back to a default sales item for lines that didn't pick one.
+  const defaultItem = clean.some((l) => !l.itemId) ? await resolveDefaultItem(qbo) : null;
 
   const Line = clean.map((l) => ({
     DetailType: 'SalesItemLineDetail',
     Amount: Math.round(l.qty * l.rate * 100) / 100,
     Description: l.description,
-    SalesItemLineDetail: { ItemRef: item, Qty: l.qty, UnitPrice: l.rate },
+    SalesItemLineDetail: {
+      ItemRef: l.itemId ? { value: l.itemId } : defaultItem,
+      Qty: l.qty,
+      UnitPrice: l.rate,
+    },
   }));
 
   const invoice = {

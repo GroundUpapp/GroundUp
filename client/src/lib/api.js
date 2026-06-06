@@ -27,6 +27,29 @@ export async function apiGet(path) {
   return res.json();
 }
 
+/** Authenticated DELETE against the backend. */
+export async function apiDelete(path) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const res = await fetch(`${BASE}/api${path}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(session?.access_token
+        ? { Authorization: `Bearer ${session.access_token}` }
+        : {}),
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
 /** Authenticated POST against the backend. */
 export async function apiPost(path, payload) {
   const {

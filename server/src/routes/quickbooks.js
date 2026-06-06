@@ -8,6 +8,7 @@ import {
 } from '../services/qboData.js';
 import {
   getCustomers,
+  getItems,
   getMoneyOwed,
   getJobs,
   createInvoice,
@@ -59,6 +60,16 @@ router.get('/quickbooks/customers', requireAuth, requireQuickBooks, async (req, 
   } catch (err) {
     console.error('QuickBooks customers error:', err);
     res.status(500).json({ error: 'Failed to load customers' });
+  }
+});
+
+// GET /api/quickbooks/items — sellable items for the invoice line picker.
+router.get('/quickbooks/items', requireAuth, requireQuickBooks, async (req, res) => {
+  try {
+    res.json({ items: await getItems(req.qbo) });
+  } catch (err) {
+    console.error('QuickBooks items error:', err);
+    res.status(500).json({ error: 'Failed to load items' });
   }
 });
 

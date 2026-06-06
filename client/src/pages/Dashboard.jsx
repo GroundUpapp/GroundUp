@@ -265,8 +265,8 @@ export default function Dashboard() {
               {/* Money Owed */}
               {view === 'money' && (connected ? <MoneyOwed refreshKey={refreshKey} /> : connectBanner)}
 
-              {/* Jobs */}
-              {view === 'jobs' && (connected ? <JobBoard refreshKey={refreshKey} /> : connectBanner)}
+              {/* Jobs — manual jobs work even without QuickBooks */}
+              {view === 'jobs' && <JobBoard refreshKey={refreshKey} connected={connected} />}
 
               {/* Ask (mobile only — desktop has the assistant in the sidebar) */}
               {view === 'ask' && (

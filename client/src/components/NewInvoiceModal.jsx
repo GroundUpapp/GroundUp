@@ -4,7 +4,7 @@ import Spinner from './Spinner';
 import { apiGet, apiPost } from '../lib/api';
 import { currency } from '../lib/format';
 
-const blankLine = () => ({ description: '', qty: '1', rate: '' });
+const blankLine = () => ({ itemId: '', description: '', qty: '1', rate: '' });
 
 function plusDays(n) {
   const d = new Date();
@@ -14,6 +14,7 @@ function plusDays(n) {
 
 export default function NewInvoiceModal({ onClose, onCreated }) {
   const [customers, setCustomers] = useState(null);
+  const [items, setItems] = useState([]);
   const [customerId, setCustomerId] = useState('');
   const [email, setEmail] = useState('');
   const [sendIt, setSendIt] = useState(true);
@@ -26,6 +27,9 @@ export default function NewInvoiceModal({ onClose, onCreated }) {
     apiGet('/quickbooks/customers')
       .then((d) => setCustomers(d.customers || []))
       .catch((e) => setError(e.message));
+    apiGet('/quickbooks/items')
+      .then((d) => setItems(d.items || []))
+      .catch(() => setItems([]));
   }, []);
 
   function pickCustomer(id) {
@@ -36,6 +40,22 @@ export default function NewInvoiceModal({ onClose, onCreated }) {
 
   function updateLine(i, field, value) {
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, [field]: value } : l)));
+  }
+
+  // Picking an item fills in the rate/description when they're still blank.
+  function pickItem(i, itemId) {
+    const it = items.find((x) => x.id === itemId);
+    setLines((prev) =>
+      prev.map((l, idx) => {
+        if (idx !== i) return l;
+        const next = { ...l, itemId };
+        if (it) {
+          if (!l.description) next.description = it.name;
+          if (!l.rate && it.rate != null) next.rate = String(it.rate);
+        }
+        return next;
+      })
+    );
   }
   const addLine = () => setLines((prev) => [...prev, blankLine()]);
   const removeLine = (i) => setLines((prev) => prev.filter((_, idx) => idx !== i));
@@ -96,6 +116,21 @@ export default function NewInvoiceModal({ onClose, onCreated }) {
           <div className="space-y-3">
             {lines.map((l, i) => (
               <div key={i} className="rounded-xl border border-amber-900/30 bg-ground-800/50 p-3">
+                {items.length > 0 && (
+                  <select
+                    className="input mb-2"
+                    value={l.itemId}
+                    onChange={(e) => pickItem(i, e.target.value)}
+                  >
+                    <option value="">Item (optional)…</option>
+                    {items.map((it) => (
+                      <option key={it.id} value={it.id}>
+                        {it.name}
+                        {it.rate != null ? ` — ${currency(it.rate)}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <input
                   className="input mb-2"
                   placeholder="What's it for? (e.g. Tear-off & re-roof)"
