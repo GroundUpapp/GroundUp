@@ -15,6 +15,7 @@ import RightSidebar from '../components/RightSidebar';
 import MoneyOwed from '../components/MoneyOwed';
 import JobBoard from '../components/JobBoard';
 import JobCost from '../components/JobCost';
+import TaxSummary from '../components/TaxSummary';
 import AiAssistant from '../components/AiAssistant';
 import NewInvoiceModal from '../components/NewInvoiceModal';
 import LogExpenseModal from '../components/LogExpenseModal';
@@ -105,6 +106,7 @@ const TABS = [
   { id: 'money', label: 'Money Owed' },
   { id: 'jobs', label: 'Jobs' },
   { id: 'jobcost', label: 'Job Cost' },
+  { id: 'tax', label: 'Tax Summary' },
   { id: 'ask', label: 'Ask', mobileOnly: true },
 ];
 
@@ -444,6 +446,9 @@ export default function Dashboard() {
 
               {/* Job Cost (Pro) — JobCost shows a locked state for Solo users */}
               {view === 'jobcost' && <JobCost onUpgrade={startPortal} />}
+
+              {/* Tax Summary (Pro) — TaxSummary shows a locked state for Solo users */}
+              {view === 'tax' && <TaxSummary onUpgrade={startPortal} />}
 
               {/* Jobs — manual jobs work even without QuickBooks */}
               {view === 'jobs' && (

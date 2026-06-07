@@ -80,6 +80,59 @@ export async function generateJobCostSummary(job) {
   }
 }
 
+// Plain-English quarterly expense summary a contractor can forward straight to
+// their accountant. Groups are already totaled; the AI just narrates them.
+const TAX_SUMMARY_SYSTEM =
+  'You write a single plain-English paragraph summarizing a construction ' +
+  "contractor's business expenses for a calendar quarter, so they can forward " +
+  'it directly to their accountant. You are given the quarter, company name, the ' +
+  'total spend, and a breakdown by category (materials, labor, subcontractors, ' +
+  'equipment, fuel, other) in dollars. State the quarter, the total, and walk ' +
+  'through each category that has spend with its dollar figure. Use the exact ' +
+  'dollar figures given — never invent numbers or categories that are not in the ' +
+  'data, and skip categories that are $0. Professional but approachable, no ' +
+  'greeting, no sign-off, no bullet points — one flowing paragraph. End by noting ' +
+  'these are unaudited figures pulled from QuickBooks for the accountant to review.';
+
+export async function generateTaxSummary({ quarter, companyName, total, breakdown }) {
+  const named = companyName || 'the business';
+  const parts = Object.entries(breakdown || {})
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([cat, v]) => `${money(v)} on ${cat}`);
+  const list = parts.length
+    ? ` This breaks down into ${parts.join(', ')}.`
+    : '';
+  const fallback =
+    `For ${quarter}, ${named} recorded ${money(total)} in deductible business ` +
+    `expenses.${list} These are unaudited figures pulled from QuickBooks for your review.`;
+
+  if (!process.env.ANTHROPIC_API_KEY) return fallback;
+  try {
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY.trim() });
+    const resp = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 400,
+      system: [{ type: 'text', text: TAX_SUMMARY_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      messages: [
+        {
+          role: 'user',
+          content: JSON.stringify({ quarter, companyName, total, breakdown }),
+        },
+      ],
+    });
+    const text = resp.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+    return text || fallback;
+  } catch (e) {
+    console.error('generateTaxSummary error:', e.message);
+    return fallback;
+  }
+}
+
 // A firm-but-professional payment reminder draft for a single overdue invoice.
 export async function generateReminderDraft({ customer, amount, daysOverdue, companyName, invoiceNumber }) {
   const fallback =

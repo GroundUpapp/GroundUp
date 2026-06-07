@@ -19,6 +19,7 @@ import {
   getJobCost,
   getReminderQueue,
   sendCustomReminder,
+  getTaxSummary,
 } from '../services/qboExtra.js';
 import { remindedWithin7Days, logReminder } from '../services/reminderLog.js';
 
@@ -152,6 +153,17 @@ router.get('/quickbooks/job-cost', requireAuth, requirePro, requireQuickBooks, a
   } catch (err) {
     console.error('QuickBooks job-cost error:', err);
     res.status(500).json({ error: 'Failed to load job cost' });
+  }
+});
+
+// GET /api/quickbooks/tax-summary — this quarter's expenses grouped by tax
+// category, with an AI paragraph the contractor can forward to their accountant.
+router.get('/quickbooks/tax-summary', requireAuth, requirePro, requireQuickBooks, async (req, res) => {
+  try {
+    res.json(await getTaxSummary(req.qbo, req.quickbooks.realmId));
+  } catch (err) {
+    console.error('QuickBooks tax-summary error:', err);
+    res.status(500).json({ error: 'Failed to load tax summary' });
   }
 });
 

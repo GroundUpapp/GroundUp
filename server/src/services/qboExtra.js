@@ -9,7 +9,7 @@
  * defensive: QBO company files vary, so helpers fall back rather than throw.
  */
 import { call, asArray, num, ymd } from './qboData.js';
-import { generateReminderDraft, generateJobCostSummary } from './aiInsight.js';
+import { generateReminderDraft, generateJobCostSummary, generateTaxSummary } from './aiInsight.js';
 import { sendEmail } from './email.js';
 
 function escapeHtml(s) {
@@ -427,6 +427,85 @@ export async function getJobCost(qbo) {
   });
 
   return Promise.all(rows.map(async (r) => ({ ...r, summary: await generateJobCostSummary(r) })));
+}
+
+// The tax categories the contractor cares about, matched against an expense
+// line's GL account name (and description as a fallback). Order matters:
+// subcontractors is checked before labor so "contract labor" lands correctly,
+// and everything that matches nothing falls through to "other".
+const TAX_CATEGORY_PATTERNS = [
+  ['subcontractors', /subcontract|sub-contract|sub contractor|1099|contract labor/i],
+  ['labor', /labor|labour|wages|payroll|crew/i],
+  ['materials', /material|supplies|lumber|cost of goods|job cost/i],
+  ['equipment', /equipment|rental|tools|machine/i],
+  ['fuel', /fuel|gas|gasoline|diesel|auto|vehicle|mileage/i],
+];
+
+function classifyTaxCategory(...texts) {
+  const hay = texts.filter(Boolean).join(' ');
+  for (const [category, pattern] of TAX_CATEGORY_PATTERNS) {
+    if (pattern.test(hay)) return category;
+  }
+  return 'other';
+}
+
+// Calendar quarter containing `today`, as { start, end, label } with YYYY-MM-DD
+// bounds (start of quarter → today) and a "Q2 2026"-style label.
+function currentQuarter(today = new Date()) {
+  const year = today.getUTCFullYear();
+  const q = Math.floor(today.getUTCMonth() / 3); // 0–3
+  const start = new Date(Date.UTC(year, q * 3, 1));
+  return { start: ymd(start), end: ymd(today), label: `Q${q + 1} ${year}` };
+}
+
+/**
+ * Tax prep summary (Pro). Pulls this quarter's expenses (QBO Purchases) from
+ * QuickBooks, groups the line amounts into the contractor's tax categories
+ * (materials, labor, subcontractors, equipment, fuel, other), and hands the
+ * totals to Claude for a plain-English paragraph they can forward to their
+ * accountant. Returns { quarter, startDate, endDate, total, breakdown, paragraph }.
+ */
+export async function getTaxSummary(qbo, realmId) {
+  const { start, end, label } = currentQuarter();
+
+  const res = await call(qbo, 'findPurchases', { fetchAll: true }).catch(() => null);
+  const purchases = asArray(res?.QueryResponse?.Purchase).filter((p) => {
+    const d = p.TxnDate;
+    return d && d >= start && d <= end;
+  });
+
+  const breakdown = { materials: 0, labor: 0, subcontractors: 0, equipment: 0, fuel: 0, other: 0 };
+  let total = 0;
+
+  for (const p of purchases) {
+    const payee = p.EntityRef?.name;
+    for (const line of asArray(p.Line)) {
+      const detail = line.AccountBasedExpenseLineDetail;
+      if (!detail) continue; // skip non-expense lines (e.g. item-based)
+      const amount = num(line.Amount);
+      if (!amount) continue;
+      const category = classifyTaxCategory(detail.AccountRef?.name, line.Description, payee);
+      breakdown[category] += amount;
+      total += amount;
+    }
+  }
+
+  for (const k of Object.keys(breakdown)) breakdown[k] = Math.round(breakdown[k]);
+  total = Math.round(total);
+
+  let companyName = null;
+  if (realmId) {
+    try {
+      const c = await call(qbo, 'getCompanyInfo', realmId);
+      companyName = c?.CompanyName || null;
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  const paragraph = await generateTaxSummary({ quarter: label, companyName, total, breakdown });
+
+  return { quarter: label, startDate: start, endDate: end, total, breakdown, paragraph };
 }
 
 /** Overdue invoices with an AI-drafted follow-up message for each (Pro queue). */
