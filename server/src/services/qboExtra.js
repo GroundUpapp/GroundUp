@@ -15,6 +15,7 @@ import {
   generateTaxSummary,
   generatePaymentRisk,
   generateMonthlyPLSummary,
+  generateBidEstimate,
 } from './aiInsight.js';
 import { sendEmail } from './email.js';
 
@@ -725,4 +726,182 @@ export async function sendCustomReminder(qbo, invoiceId, message, replyTo) {
     replyTo,
   });
   return { sent: true, customer, email };
+}
+
+/**
+ * Bid Estimator (Pro). Looks at the contractor's last 10 completed jobs in
+ * QuickBooks and learns their cost structure — materials, labor, and
+ * subcontractors as a share of revenue, plus the margin they actually kept —
+ * then, given a new job's estimated contract value, recommends the minimum bid
+ * to protect that usual margin and asks Claude for a plain-English call.
+ *
+ * "Job" = one customer/job. "Completed" = invoiced and fully paid (no open
+ * balance) with real costs booked against it. Recency = latest invoice date.
+ * The recommended bid is built from the more conservative of the all-time and
+ * recent cost ratios, so if costs have been creeping up it nudges the bid above
+ * the entered value rather than quietly eating the contractor's margin.
+ *
+ * Returns: { jobType, contractValue, jobCount, averages, projection,
+ * recommendedBid, flags, recommendation }.
+ */
+export async function getBidEstimate(qbo, { jobType, contractValue } = {}) {
+  const value = num(contractValue);
+  if (!(value > 0)) throw new Error('Enter an estimated contract value.');
+  const type = String(jobType || '').trim() || null;
+
+  const [invRes, purRes] = await Promise.all([
+    call(qbo, 'findInvoices', { fetchAll: true }),
+    call(qbo, 'findPurchases', { fetchAll: true }).catch(() => null),
+  ]);
+
+  // One row per customer/job: revenue, open balance, recency, costs by category.
+  const jobs = new Map();
+  const job = (id, name) => {
+    if (!id) return null;
+    if (!jobs.has(id)) {
+      jobs.set(id, {
+        id,
+        name: name || 'Unknown',
+        invoiced: 0,
+        balance: 0,
+        lastInvoice: null,
+        materials: 0,
+        labor: 0,
+        subcontractors: 0,
+        otherCost: 0,
+      });
+    }
+    return jobs.get(id);
+  };
+
+  for (const inv of asArray(invRes?.QueryResponse?.Invoice)) {
+    const j = job(inv.CustomerRef?.value, inv.CustomerRef?.name);
+    if (!j) continue;
+    j.invoiced += num(inv.TotalAmt);
+    j.balance += num(inv.Balance);
+    const d = inv.TxnDate || null;
+    if (d && (!j.lastInvoice || d > j.lastInvoice)) j.lastInvoice = d;
+  }
+
+  // Costs = expense lines tagged to the customer/job, bucketed with the same
+  // category classifier the Tax Summary uses (subcontractors before labor, etc).
+  for (const p of asArray(purRes?.QueryResponse?.Purchase)) {
+    const payee = p.EntityRef?.name;
+    for (const line of asArray(p.Line)) {
+      const detail = line.AccountBasedExpenseLineDetail;
+      const ref = detail?.CustomerRef;
+      if (!ref?.value || !jobs.has(ref.value)) continue;
+      const amount = num(line.Amount);
+      if (!amount) continue;
+      const cat = classifyTaxCategory(detail.AccountRef?.name, line.Description, payee);
+      const j = jobs.get(ref.value);
+      if (cat === 'materials') j.materials += amount;
+      else if (cat === 'labor') j.labor += amount;
+      else if (cat === 'subcontractors') j.subcontractors += amount;
+      else j.otherCost += amount; // equipment, fuel, other
+    }
+  }
+
+  // Completed = fully paid, with revenue and real costs. Most recent first, top 10.
+  const completed = [...jobs.values()]
+    .map((j) => ({ ...j, totalCost: j.materials + j.labor + j.subcontractors + j.otherCost }))
+    .filter((j) => j.invoiced > 0 && j.balance <= 0.005 && j.totalCost > 0)
+    .sort((a, b) => ((a.lastInvoice || '') < (b.lastInvoice || '') ? 1 : -1))
+    .slice(0, 10);
+
+  if (completed.length === 0) {
+    return {
+      jobType: type,
+      contractValue: Math.round(value),
+      jobCount: 0,
+      averages: null,
+      projection: null,
+      recommendedBid: null,
+      flags: [],
+      recommendation:
+        "You don't have any completed, fully-paid jobs with costs in QuickBooks yet, so " +
+        'there\'s no history to base a bid on. Finish and collect on a few jobs — with ' +
+        'expenses logged against them — and your bid history will build automatically.',
+    };
+  }
+
+  // Per-job shares of revenue, then simple (equal-weight) averages across the set.
+  const ratio = (n, d) => (d > 0 ? n / d : 0);
+  const per = completed.map((j) => ({
+    materialPct: ratio(j.materials, j.invoiced),
+    laborPct: ratio(j.labor, j.invoiced),
+    subPct: ratio(j.subcontractors, j.invoiced),
+    costPct: ratio(j.totalCost, j.invoiced),
+    marginPct: 1 - ratio(j.totalCost, j.invoiced),
+  }));
+  const mean = (sel, set = per) => set.reduce((s, p) => s + sel(p), 0) / set.length;
+
+  const avgMaterialPct = mean((p) => p.materialPct);
+  const avgLaborPct = mean((p) => p.laborPct);
+  const avgSubPct = mean((p) => p.subPct);
+  const avgCostPct = mean((p) => p.costPct);
+  const avgMarginPct = mean((p) => p.marginPct);
+
+  // Recent trend = the most recent few jobs (the set is already newest-first).
+  const recent = per.slice(0, Math.min(3, per.length));
+  const recentCostPct = mean((p) => p.costPct, recent);
+
+  // Recommend a bid that holds the usual margin even at the (possibly higher)
+  // recent cost rate. With stable costs this lands at ~the entered value.
+  const denom = Math.max(0.05, 1 - avgMarginPct); // guard against divide-by-zero
+  const costBasis = Math.max(avgCostPct, recentCostPct);
+  const recommendedBid = Math.round((value * costBasis) / denom);
+
+  // Flag any cost category running materially higher lately than its all-time avg.
+  const HIGH = 0.03; // 3 percentage points of revenue
+  const flags = [
+    ['materials', avgMaterialPct, mean((p) => p.materialPct, recent)],
+    ['labor', avgLaborPct, mean((p) => p.laborPct, recent)],
+    ['subcontractors', avgSubPct, mean((p) => p.subPct, recent)],
+  ]
+    .filter(([, hist, rec]) => rec - hist >= HIGH)
+    .map(([category, hist, rec]) => ({
+      category,
+      historicalPct: Math.round(hist * 100),
+      recentPct: Math.round(rec * 100),
+    }));
+
+  // Expected cost split for the entered contract value (for the breakdown view).
+  const projection = {
+    materials: Math.round(value * avgMaterialPct),
+    labor: Math.round(value * avgLaborPct),
+    subcontractors: Math.round(value * avgSubPct),
+    totalCost: Math.round(value * avgCostPct),
+    profit: Math.round(value * avgMarginPct),
+  };
+
+  const averages = {
+    marginPct: Math.round(avgMarginPct * 100),
+    materialPct: Math.round(avgMaterialPct * 100),
+    laborPct: Math.round(avgLaborPct * 100),
+    subPct: Math.round(avgSubPct * 100),
+  };
+
+  const recommendation = await generateBidEstimate({
+    jobType: type,
+    contractValue: Math.round(value),
+    jobCount: completed.length,
+    usualMarginPct: averages.marginPct,
+    materialPct: averages.materialPct,
+    laborPct: averages.laborPct,
+    subPct: averages.subPct,
+    recommendedBid,
+    flags,
+  });
+
+  return {
+    jobType: type,
+    contractValue: Math.round(value),
+    jobCount: completed.length,
+    averages,
+    projection,
+    recommendedBid,
+    flags,
+    recommendation,
+  };
 }

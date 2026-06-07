@@ -22,6 +22,7 @@ import {
   getTaxSummary,
   getPaymentRisk,
   getMonthlyPL,
+  getBidEstimate,
 } from '../services/qboExtra.js';
 import { remindedWithin7Days, logReminder } from '../services/reminderLog.js';
 
@@ -188,6 +189,18 @@ router.get('/quickbooks/payment-risk', requireAuth, requirePro, requireQuickBook
   } catch (err) {
     console.error('QuickBooks payment-risk error:', err);
     res.status(500).json({ error: 'Failed to load payment risk' });
+  }
+});
+
+// POST /api/quickbooks/bid-estimate — recommend a bid for a new job from the
+// cost structure (materials/labor/subs/margin) of recent completed jobs.
+router.post('/quickbooks/bid-estimate', requireAuth, requirePro, requireQuickBooks, async (req, res) => {
+  try {
+    const { jobType, contractValue } = req.body || {};
+    res.json(await getBidEstimate(req.qbo, { jobType, contractValue }));
+  } catch (err) {
+    console.error('QuickBooks bid-estimate error:', err);
+    res.status(400).json({ error: err.message || 'Failed to estimate bid' });
   }
 });
 

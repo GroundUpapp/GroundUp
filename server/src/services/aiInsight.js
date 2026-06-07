@@ -317,3 +317,84 @@ export async function generateMonthlyPLSummary({ thisMonth, lastMonth }) {
     return fallback;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Bid Estimator (Pro)
+// ---------------------------------------------------------------------------
+
+const BID_ESTIMATE_SYSTEM =
+  'You are the money guy for a small South Jersey construction contractor ' +
+  '(roofing, framing, concrete, HVAC, electrical). They are about to bid a new ' +
+  'job and want to know what to charge to protect their usual profit. You are ' +
+  'given JSON: the job type they typed, the contract value they have in mind, ' +
+  'how many of their recent completed jobs this is based on, their usual margin ' +
+  '(percent), their typical cost split as a percent of the job (materials, ' +
+  'labor, subcontractors), a recommended minimum bid in dollars, and any cost ' +
+  'categories that have been running high lately. Write 2 to 3 short, plain, ' +
+  'blue-collar sentences. Lead with the recommendation in this exact shape: ' +
+  '"Based on your last N jobs, to hit your usual M% margin you\'d need to bid at ' +
+  'least $X." Then, if any category is flagged as running high, add one sentence ' +
+  'naming it (e.g. "Watch your material costs — they\'ve been running high ' +
+  'lately."). Use the exact dollar figures and percentages given — never invent ' +
+  'numbers. Do NOT claim the past jobs are the same type of work; you only know ' +
+  'they are their most recent completed jobs. No greeting, no sign-off, no bullet points.';
+
+// Plain-English bid recommendation for a new job. Fields come from getBidEstimate:
+// the entered job, the historical averages, the recommended bid, and any cost
+// categories trending high. Falls back to a deterministic line if the AI is off.
+export async function generateBidEstimate({
+  jobType,
+  contractValue,
+  jobCount,
+  usualMarginPct,
+  materialPct,
+  laborPct,
+  subPct,
+  recommendedBid,
+  flags = [],
+}) {
+  const high = (flags || []).map((f) => f.category);
+  const warn = high.length
+    ? ` Watch your ${high.join(' and ')} cost${high.length > 1 ? 's' : ''} — ${
+        high.length > 1 ? "they've" : "it's"
+      } been running high lately.`
+    : '';
+  const fallback =
+    `Based on your last ${jobCount} job${jobCount === 1 ? '' : 's'}, to hit your usual ` +
+    `${usualMarginPct}% margin you'd need to bid at least ${money(recommendedBid)}.${warn}`;
+
+  if (!process.env.ANTHROPIC_API_KEY) return fallback;
+  try {
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY.trim() });
+    const resp = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 220,
+      system: [{ type: 'text', text: BID_ESTIMATE_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      messages: [
+        {
+          role: 'user',
+          content: JSON.stringify({
+            jobType,
+            contractValue,
+            jobCount,
+            usualMarginPct,
+            materialPct,
+            laborPct,
+            subPct,
+            recommendedBid,
+            flags,
+          }),
+        },
+      ],
+    });
+    const text = resp.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join(' ')
+      .trim();
+    return text || fallback;
+  } catch (e) {
+    console.error('generateBidEstimate error:', e.message);
+    return fallback;
+  }
+}

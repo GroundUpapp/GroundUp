@@ -17,6 +17,7 @@ import JobBoard from '../components/JobBoard';
 import JobCost from '../components/JobCost';
 import TaxSummary from '../components/TaxSummary';
 import ThisMonth from '../components/ThisMonth';
+import BidEstimator from '../components/BidEstimator';
 import AiAssistant from '../components/AiAssistant';
 import NewInvoiceModal from '../components/NewInvoiceModal';
 import LogExpenseModal from '../components/LogExpenseModal';
@@ -109,6 +110,7 @@ const TABS = [
   { id: 'month', label: 'This Month' },
   { id: 'jobcost', label: 'Job Cost' },
   { id: 'tax', label: 'Tax Summary' },
+  { id: 'bid', label: 'Bid Estimator' },
   { id: 'ask', label: 'Ask', mobileOnly: true },
 ];
 
@@ -454,6 +456,9 @@ export default function Dashboard() {
 
               {/* Tax Summary (Pro) — TaxSummary shows a locked state for Solo users */}
               {view === 'tax' && <TaxSummary onUpgrade={startPortal} />}
+
+              {/* Bid Estimator (Pro) — BidEstimator shows a locked state for Solo users */}
+              {view === 'bid' && <BidEstimator onUpgrade={startPortal} />}
 
               {/* Jobs — manual jobs work even without QuickBooks */}
               {view === 'jobs' && (
