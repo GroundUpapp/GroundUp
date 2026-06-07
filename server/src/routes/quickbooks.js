@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { requireQuickBooks } from '../middleware/quickbooks.js';
+import { requirePro } from '../middleware/plan.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import {
   getSummary,
@@ -15,6 +16,9 @@ import {
   createInvoice,
   createExpense,
   sendInvoiceReminder,
+  getJobCost,
+  getReminderQueue,
+  sendCustomReminder,
 } from '../services/qboExtra.js';
 import { remindedWithin7Days, logReminder } from '../services/reminderLog.js';
 
@@ -138,5 +142,54 @@ router.post('/quickbooks/expenses', requireAuth, requireQuickBooks, async (req, 
     res.status(400).json({ error: err.message || 'Failed to log expense' });
   }
 });
+
+// --- Pro-only features (Solo users get 403 { error: 'pro_required' }) ---
+
+// GET /api/quickbooks/job-cost — job cost vs estimate with AI summaries.
+router.get('/quickbooks/job-cost', requireAuth, requirePro, requireQuickBooks, async (req, res) => {
+  try {
+    res.json({ jobs: await getJobCost(req.qbo) });
+  } catch (err) {
+    console.error('QuickBooks job-cost error:', err);
+    res.status(500).json({ error: 'Failed to load job cost' });
+  }
+});
+
+// GET /api/quickbooks/reminders/queue — overdue invoices + AI-drafted follow-ups.
+router.get('/quickbooks/reminders/queue', requireAuth, requirePro, requireQuickBooks, async (req, res) => {
+  try {
+    res.json({ queue: await getReminderQueue(req.qbo, req.quickbooks.realmId) });
+  } catch (err) {
+    console.error('QuickBooks reminder-queue error:', err);
+    res.status(500).json({ error: 'Failed to load reminders' });
+  }
+});
+
+// POST /api/quickbooks/reminders/send — send an approved/edited follow-up message.
+router.post(
+  '/quickbooks/reminders/send',
+  requireAuth,
+  requirePro,
+  rateLimit({ name: 'remind', max: 20, window: '1 h' }),
+  requireQuickBooks,
+  async (req, res) => {
+    try {
+      const userId = req.user.id;
+      const { invoiceId, message } = req.body || {};
+      if (!invoiceId) return res.status(400).json({ error: 'Missing invoice.' });
+      if (await remindedWithin7Days(userId, invoiceId)) {
+        return res
+          .status(429)
+          .json({ error: 'You already followed up on this invoice in the last 7 days.' });
+      }
+      const result = await sendCustomReminder(req.qbo, invoiceId, message, req.user.email);
+      await logReminder(userId, invoiceId, result.customer);
+      res.json(result);
+    } catch (err) {
+      console.error('QuickBooks reminder-send error:', err);
+      res.status(400).json({ error: err.message || 'Failed to send reminder' });
+    }
+  }
+);
 
 export default router;

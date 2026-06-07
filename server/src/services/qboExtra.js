@@ -9,7 +9,15 @@
  * defensive: QBO company files vary, so helpers fall back rather than throw.
  */
 import { call, asArray, num, ymd } from './qboData.js';
-import { generateReminderDraft } from './aiInsight.js';
+import { generateReminderDraft, generateJobCostSummary } from './aiInsight.js';
+import { sendEmail } from './email.js';
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
 function daysBetween(fromYmd, toDate = new Date()) {
   if (!fromYmd) return 0;
@@ -380,4 +388,100 @@ export async function sendInvoiceReminder(qbo, invoiceId, realmId) {
 
   await call(qbo, 'sendInvoicePdf', String(invoiceId), email);
   return { sent: true, email, customer, draft };
+}
+
+// ---------------------------------------------------------------------------
+// Pro features
+// ---------------------------------------------------------------------------
+
+/**
+ * Job Cost vs Estimate. QBO has no stored cost budget, so the budget is derived
+ * from the estimate/contract at a target margin (COST_RATIO). Returns per job:
+ * estimated/actual revenue, estimated/actual cost, variance, status, AI summary.
+ */
+export async function getJobCost(qbo) {
+  const COST_RATIO = 0.7; // ~30% target margin assumption (no cost budget in QBO)
+  const jobs = (await getJobs(qbo))
+    .filter((j) => j.invoiced > 0 || j.costs > 0 || j.contract > 0)
+    .slice(0, 12);
+
+  const rows = jobs.map((j) => {
+    const estimatedRevenue = Math.round(j.contract || j.invoiced);
+    const actualRevenue = Math.round(j.invoiced);
+    const estimatedCost = Math.round(estimatedRevenue * COST_RATIO);
+    const actualCost = Math.round(j.costs);
+    const varianceDollars = actualCost - estimatedCost; // positive = over budget
+    const variancePct = estimatedCost > 0 ? Math.round((varianceDollars / estimatedCost) * 100) : 0;
+    const status = variancePct <= 5 ? 'on_track' : variancePct <= 15 ? 'at_risk' : 'over_budget';
+    return {
+      id: j.id,
+      name: j.name,
+      estimatedRevenue,
+      actualRevenue,
+      estimatedCost,
+      actualCost,
+      varianceDollars,
+      variancePct,
+      status,
+    };
+  });
+
+  return Promise.all(rows.map(async (r) => ({ ...r, summary: await generateJobCostSummary(r) })));
+}
+
+/** Overdue invoices with an AI-drafted follow-up message for each (Pro queue). */
+export async function getReminderQueue(qbo, realmId) {
+  const overdue = (await getMoneyOwed(qbo)).filter((i) => i.daysOverdue > 0).slice(0, 15);
+
+  let companyName = null;
+  if (realmId) {
+    try {
+      const c = await call(qbo, 'getCompanyInfo', realmId);
+      companyName = c?.CompanyName || null;
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  return Promise.all(
+    overdue.map(async (i) => ({
+      id: i.id,
+      customer: i.customer,
+      amount: i.amount,
+      daysOverdue: i.daysOverdue,
+      number: i.number,
+      draft: await generateReminderDraft({
+        customer: i.customer,
+        amount: i.amount,
+        daysOverdue: i.daysOverdue,
+        companyName,
+        invoiceNumber: i.number,
+      }),
+    }))
+  );
+}
+
+/** Send an approved/edited follow-up message to the customer's on-file email. */
+export async function sendCustomReminder(qbo, invoiceId, message, replyTo) {
+  if (!invoiceId) throw new Error('Missing invoice.');
+  const text = String(message || '').trim();
+  if (!text) throw new Error('Message is empty.');
+
+  const inv = await call(qbo, 'getInvoice', String(invoiceId));
+  const email = inv?.BillEmail?.Address; // on-file only — never client-supplied
+  if (!email) throw new Error('No email on file for this customer.');
+
+  const customer = inv?.CustomerRef?.name || 'Customer';
+  const docNum = inv?.DocNumber;
+  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;white-space:pre-wrap;">${escapeHtml(
+    text
+  )}</div>`;
+
+  await sendEmail({
+    to: email,
+    subject: `Payment reminder${docNum ? ` — invoice #${docNum}` : ''}`,
+    html,
+    replyTo,
+  });
+  return { sent: true, customer, email };
 }

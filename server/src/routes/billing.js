@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { getStripe } from '../services/stripe.js';
 import {
   getOrCreateSubscription,
+  getPlan,
   setCustomerId,
   updateByUser,
   updateByCustomer,
@@ -20,6 +21,16 @@ function appOrigin(req) {
 function periodEndIso(sub) {
   return sub?.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
 }
+
+// GET /api/billing/plan — { plan: 'trial' | 'pro' | 'solo' } for the current user.
+router.get('/billing/plan', requireAuth, async (req, res) => {
+  try {
+    res.json({ plan: await getPlan(req.user.id) });
+  } catch (err) {
+    console.error('Billing plan error:', err);
+    res.status(500).json({ error: 'Failed to load plan' });
+  }
+});
 
 // GET /api/billing/status — current subscription (creates a 14-day trial on first call).
 router.get('/billing/status', requireAuth, async (req, res) => {

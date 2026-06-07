@@ -18,9 +18,15 @@ function from() {
   return process.env.RESEND_FROM?.trim() || 'Ground Up <onboarding@resend.dev>';
 }
 
-export async function sendEmail({ to, subject, html }) {
+export async function sendEmail({ to, subject, html, replyTo }) {
   const resend = getResend();
-  const { data, error } = await resend.emails.send({ from: from(), to, subject, html });
+  const { data, error } = await resend.emails.send({
+    from: from(),
+    to,
+    subject,
+    html,
+    ...(replyTo ? { replyTo } : {}),
+  });
   if (error) throw new Error(error.message || 'Resend send failed');
   return data;
 }

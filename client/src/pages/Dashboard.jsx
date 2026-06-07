@@ -14,6 +14,7 @@ import LeftSidebar from '../components/LeftSidebar';
 import RightSidebar from '../components/RightSidebar';
 import MoneyOwed from '../components/MoneyOwed';
 import JobBoard from '../components/JobBoard';
+import JobCost from '../components/JobCost';
 import AiAssistant from '../components/AiAssistant';
 import NewInvoiceModal from '../components/NewInvoiceModal';
 import LogExpenseModal from '../components/LogExpenseModal';
@@ -103,6 +104,7 @@ const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'money', label: 'Money Owed' },
   { id: 'jobs', label: 'Jobs' },
+  { id: 'jobcost', label: 'Job Cost' },
   { id: 'ask', label: 'Ask', mobileOnly: true },
 ];
 
@@ -433,7 +435,15 @@ export default function Dashboard() {
               )}
 
               {/* Money Owed */}
-              {view === 'money' && (connected ? <MoneyOwed refreshKey={refreshKey} /> : connectBanner)}
+              {view === 'money' &&
+                (connected ? (
+                  <MoneyOwed refreshKey={refreshKey} onUpgrade={startPortal} />
+                ) : (
+                  connectBanner
+                ))}
+
+              {/* Job Cost (Pro) — JobCost shows a locked state for Solo users */}
+              {view === 'jobcost' && <JobCost onUpgrade={startPortal} />}
 
               {/* Jobs — manual jobs work even without QuickBooks */}
               {view === 'jobs' && (

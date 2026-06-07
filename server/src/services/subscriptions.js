@@ -46,6 +46,19 @@ export async function getOrCreateSubscription(userId) {
   return shape(created);
 }
 
+// Returns 'trial' | 'pro' | 'solo'. Trial users get full Pro access during the
+// 14-day window, so they resolve to 'trial' (treated as Pro by hasProAccess).
+export async function getPlan(userId) {
+  const sub = await getOrCreateSubscription(userId);
+  if (sub.trialing) return 'trial';
+  if (sub.status === 'active') return sub.plan === 'pro' ? 'pro' : 'solo';
+  return 'solo';
+}
+
+export function hasProAccess(plan) {
+  return plan === 'pro' || plan === 'trial';
+}
+
 export async function setCustomerId(userId, stripeCustomerId) {
   const { error } = await supabaseAdmin
     .from('subscriptions')

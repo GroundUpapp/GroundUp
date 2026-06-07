@@ -45,6 +45,41 @@ export async function generateWeeklyInsight(d) {
   }
 }
 
+// Plain-English budget-vs-actual summary for one job (Job Cost feature).
+export async function generateJobCostSummary(job) {
+  const over = job.varianceDollars;
+  const fallback =
+    over > 0
+      ? `${job.name}: you've spent ${money(job.actualCost)} against a ${money(job.estimatedCost)} budget — ${money(over)} (${job.variancePct}%) over on this job.`
+      : `${job.name}: ${money(job.actualCost)} spent against a ${money(job.estimatedCost)} budget — ${money(Math.abs(over))} under. Looking good.`;
+
+  if (!process.env.ANTHROPIC_API_KEY) return fallback;
+  try {
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY.trim() });
+    const resp = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 160,
+      system: [
+        {
+          type: 'text',
+          text: 'You explain a contractor job\'s budget vs. actuals in one or two plain, blue-collar sentences. Use the dollar figures given (estimated/actual revenue, estimated/actual cost, variance). Dollars, not percentages-only. Lead with whether they\'re over or under budget and by how much. Do NOT invent material/labor breakdowns that aren\'t in the data.',
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: [{ role: 'user', content: JSON.stringify(job) }],
+    });
+    const text = resp.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join(' ')
+      .trim();
+    return text || fallback;
+  } catch (e) {
+    console.error('generateJobCostSummary error:', e.message);
+    return fallback;
+  }
+}
+
 // A firm-but-professional payment reminder draft for a single overdue invoice.
 export async function generateReminderDraft({ customer, amount, daysOverdue, companyName, invoiceNumber }) {
   const fallback =
