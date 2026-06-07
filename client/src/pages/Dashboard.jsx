@@ -76,7 +76,7 @@ function buildAlerts({ cashOnHand, outstandingReceivables }) {
 }
 
 // Shapes live QuickBooks responses into the dashboard's data model.
-function toDashboardData(summary, invoices) {
+function toDashboardData(summary, invoices, jobs = []) {
   const openCount = invoices.filter((i) => i.status !== 'Paid').length;
   const health = deriveHealth(summary);
   return {
@@ -88,7 +88,13 @@ function toDashboardData(summary, invoices) {
     healthLabel: health.label,
     healthDescription: 'Based on your live QuickBooks data.',
     alerts: buildAlerts(summary),
-    jobs: [],
+    // Map the job-board shape to JobProfitability's { revenue, cost }; top 5.
+    jobs: jobs.slice(0, 5).map((j) => ({
+      id: j.id,
+      name: j.name,
+      revenue: j.invoiced,
+      cost: j.costs,
+    })),
     usingMockData: false,
   };
 }
@@ -219,14 +225,21 @@ export default function Dashboard() {
         setConnected(!!status.connected);
 
         if (status.connected) {
-          const [summary, invRes, cfRes] = await Promise.all([
-            apiGet('/quickbooks/summary'),
-            apiGet('/quickbooks/invoices'),
-            apiGet('/quickbooks/cashflow'),
-          ]);
-          if (!active) return;
-          setData(toDashboardData(summary, invRes.invoices || []));
-          setCashFlow((cfRes.cashflow || []).map((d) => d.net));
+          // Connected: a data hiccup here must NOT downgrade the user to the
+          // "connect QuickBooks" sample view — leave data null and show retry.
+          try {
+            const [summary, invRes, cfRes, jobsRes] = await Promise.all([
+              apiGet('/quickbooks/summary'),
+              apiGet('/quickbooks/invoices'),
+              apiGet('/quickbooks/cashflow'),
+              apiGet('/quickbooks/jobs').catch(() => ({ jobs: [] })),
+            ]);
+            if (!active) return;
+            setData(toDashboardData(summary, invRes.invoices || [], jobsRes.jobs || []));
+            setCashFlow((cfRes.cashflow || []).map((d) => d.net));
+          } catch {
+            if (active) setData(null);
+          }
         } else {
           setData(SAMPLE_DATA);
         }
@@ -379,11 +392,16 @@ export default function Dashboard() {
                     </p>
                   )}
                   <div className="grid grid-cols-2 gap-3 mb-4 xl:gap-5 xl:mb-6">
-                    <MetricCard label="Cash on hand" value={data.cashOnHand} positive />
+                    <MetricCard
+                      label="Cash on hand"
+                      value={data.cashOnHand}
+                      trend={data.cashOnHandChange}
+                      hint={data.cashOnHandChange != null ? 'vs last week' : undefined}
+                    />
                     <MetricCard
                       label="Money owed to you"
                       value={data.outstandingInvoices}
-                      change={`${data.outstandingInvoicesCount} open`}
+                      hint={`${data.outstandingInvoicesCount} open`}
                     />
                   </div>
                   <div className="contents xl:grid xl:grid-cols-2 xl:gap-6 xl:mb-6 xl:items-stretch">
@@ -396,6 +414,22 @@ export default function Dashboard() {
                   </div>
                   <JobProfitability jobs={data.jobs} />
                 </>
+              )}
+
+              {/* Connected, but the QuickBooks data didn't load — offer a retry
+                  instead of the misleading "connect QuickBooks" sample view. */}
+              {view === 'overview' && !data && connected && (
+                <div className="card text-center">
+                  <p className="text-sm text-cream-200">
+                    We couldn't load your QuickBooks data just now.
+                  </p>
+                  <button
+                    onClick={refresh}
+                    className="mt-3 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-ground-950 hover:bg-amber-400"
+                  >
+                    Try again
+                  </button>
+                </div>
               )}
 
               {/* Money Owed */}

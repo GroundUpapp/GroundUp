@@ -1,5 +1,5 @@
 // Radial financial-health gauge (0–100).
-export default function HealthScore({ score = 0, label }) {
+export default function HealthScore({ score = 0 }) {
   const clamped = Math.max(0, Math.min(100, score));
   const r = 52;
   const circumference = 2 * Math.PI * r;
@@ -45,9 +45,7 @@ export default function HealthScore({ score = 0, label }) {
         </div>
       </div>
       <div>
-        <p className="text-sm font-medium text-cream-300">
-          {label || 'Financial health'}
-        </p>
+        <p className="text-sm font-medium text-cream-300">Financial health</p>
         <p className={`text-xl font-bold ${tone.text}`}>{tone.word}</p>
         <p className="mt-1 text-xs leading-relaxed text-cream-300/80">
           A blended view of cash runway, receivables, and margins.

@@ -36,7 +36,7 @@ export default function AlertList({ alerts = [] }) {
                     {a.title}
                   </p>
                   <p className="mt-0.5 text-sm text-cream-300/90">
-                    {a.message}
+                    {a.message || a.body}
                   </p>
                 </div>
               </li>
