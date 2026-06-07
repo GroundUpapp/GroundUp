@@ -319,6 +319,152 @@ export async function generateMonthlyPLSummary({ thisMonth, lastMonth }) {
 }
 
 // ---------------------------------------------------------------------------
+// Customer scorecard (Pro)
+// ---------------------------------------------------------------------------
+
+const CUSTOMER_TIERS = ['top', 'average', 'problematic'];
+const normName = (s) => String(s || '').trim().toLowerCase();
+
+// One plain-English line about a customer — the per-row note when the AI is
+// unavailable or leaves a note blank. The metrics (tier, score) are computed
+// upstream in qboExtra; this just narrates the numbers it's handed.
+function customerNote(c) {
+  const pay =
+    c.avgDaysToPay == null
+      ? 'no fully-paid invoices on record yet'
+      : `pays in about ${c.avgDaysToPay} days` +
+        (c.latePaymentRate ? `, late on ${c.latePaymentRate}% of invoices` : ', rarely late');
+  const margin = c.marginPct == null ? '' : `, ~${c.marginPct}% margin`;
+  return `${money(c.revenue)} across ${c.jobs} ${c.jobs === 1 ? 'job' : 'jobs'} — ${pay}${margin}.`;
+}
+
+// Deterministic ranking + summary from each customer's precomputed score/tier.
+// Used as the full fallback when the AI is unavailable, and as the base the AI's
+// output is merged over so every customer always ends up with a tier and a note.
+function fallbackScorecard(customers) {
+  const ranked = [...customers].sort((a, b) => b.score - a.score || b.revenue - a.revenue);
+  const ranking = ranked.map((c) => ({ name: c.name, tier: c.tier, note: customerNote(c) }));
+  if (ranked.length === 0) {
+    return { summary: 'No customer history yet — send some invoices to build your scorecard.', ranking };
+  }
+  const best = ranked[0];
+  const worst = ranked[ranked.length - 1];
+  let summary = `Your best customer is ${best.name} — ${customerNote(best).replace(/\.$/, '')}.`;
+  if (worst && worst.name !== best.name && worst.tier === 'problematic') {
+    summary += ` Your toughest is ${worst.name}, who ${
+      worst.latePaymentRate
+        ? `has been late on ${worst.latePaymentRate}% of invoices`
+        : 'drags out payment'
+    }.`;
+  }
+  return { summary, ranking };
+}
+
+const CUSTOMER_SCORECARD_SYSTEM =
+  'You are the money guy for a small South Jersey construction contractor ' +
+  '(roofing, framing, concrete, HVAC, electrical). You are given a JSON array of ' +
+  'their customers, each with: name, total revenue, average invoice size, average ' +
+  'days to pay, late-payment rate (percent), number of jobs, and profit-margin ' +
+  'percent (marginPct may be null when job costs are not tracked). Rank the ' +
+  'customers from best to most difficult. A good customer pays on time (low days ' +
+  'to pay, low late rate), is profitable (high margin), and brings steady revenue ' +
+  'and jobs; a difficult one pays late, drags out payment, or runs thin or ' +
+  'negative margins. Respond with ONLY a JSON object of the form {"summary": ' +
+  '"...", "ranking": [{"name": "...", "tier": "top" | "average" | "problematic", ' +
+  '"note": "..."}]}. Include EVERY customer in "ranking", best first, using their ' +
+  'names EXACTLY as given. The summary is 2 to 4 sentences naming the single best ' +
+  'customer and why, and the single most difficult and why, in plain blue-collar ' +
+  'language with dollars and days. Each note is one short, plain sentence about ' +
+  'that customer. Never invent numbers or names that are not in the data. Example ' +
+  'summary tone: "Your best customer by margin is Bergen Builders — pays on time ' +
+  'and jobs rarely run over. Your most difficult is Smith Residential — ' +
+  'consistently late and jobs run over budget." JSON only, no preamble.';
+
+/**
+ * Rank a contractor's customers and write a plain-English summary. `customers`
+ * are the scored metric rows from qboExtra (each carries a deterministic `score`
+ * and `tier`). Returns { summary, ranking: [{ name, tier, note }] } where the
+ * ranking covers every customer, best first — the AI's tier/note/order applied
+ * on top of the deterministic fallback so nothing is ever missing.
+ */
+export async function generateCustomerScorecard(customers) {
+  const fallback = fallbackScorecard(customers);
+  if (!process.env.ANTHROPIC_API_KEY || customers.length === 0) return fallback;
+
+  try {
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY.trim() });
+    // Only send the fields the model should reason over — not internal scores.
+    const payload = customers.map((c) => ({
+      name: c.name,
+      revenue: c.revenue,
+      avgInvoice: c.avgInvoice,
+      avgDaysToPay: c.avgDaysToPay,
+      latePaymentRate: c.latePaymentRate,
+      jobs: c.jobs,
+      marginPct: c.marginPct,
+    }));
+    const resp = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 2000,
+      system: [{ type: 'text', text: CUSTOMER_SCORECARD_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: JSON.stringify(payload) }],
+    });
+    const text = resp.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+      .trim();
+
+    // Be defensive: pull the first JSON object out of the response.
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return fallback;
+    const parsed = JSON.parse(match[0]);
+
+    const summary =
+      typeof parsed.summary === 'string' && parsed.summary.trim()
+        ? parsed.summary.trim()
+        : fallback.summary;
+
+    // Index the AI's entries by name, keeping the order it ranked them in.
+    const aiByName = new Map();
+    if (Array.isArray(parsed.ranking)) {
+      parsed.ranking.forEach((r, i) => {
+        if (!r || typeof r.name !== 'string') return;
+        const key = normName(r.name);
+        if (aiByName.has(key)) return;
+        aiByName.set(key, {
+          tier: CUSTOMER_TIERS.includes(r.tier) ? r.tier : null,
+          note: typeof r.note === 'string' && r.note.trim() ? r.note.trim() : null,
+          order: i,
+        });
+      });
+    }
+    if (aiByName.size === 0) return fallback;
+
+    // Rebuild the ranking from our own customer list so it's always complete:
+    // AI tier/note/order where given, deterministic tier/note otherwise.
+    const ranking = customers
+      .map((c) => {
+        const ai = aiByName.get(normName(c.name));
+        return {
+          name: c.name,
+          tier: (ai && ai.tier) || c.tier,
+          note: (ai && ai.note) || customerNote(c),
+          _order: ai ? ai.order : Number.MAX_SAFE_INTEGER,
+          _score: c.score,
+        };
+      })
+      .sort((a, b) => a._order - b._order || b._score - a._score)
+      .map(({ _order, _score, ...r }) => r);
+
+    return { summary, ranking };
+  } catch (e) {
+    console.error('generateCustomerScorecard error:', e.message);
+    return fallback;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Bid Estimator (Pro)
 // ---------------------------------------------------------------------------
 

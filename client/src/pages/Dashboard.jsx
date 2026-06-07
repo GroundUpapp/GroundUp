@@ -17,6 +17,7 @@ import JobBoard from '../components/JobBoard';
 import JobCost from '../components/JobCost';
 import TaxSummary from '../components/TaxSummary';
 import ThisMonth from '../components/ThisMonth';
+import CustomerScorecard from '../components/CustomerScorecard';
 import BidEstimator from '../components/BidEstimator';
 import AiAssistant from '../components/AiAssistant';
 import NewInvoiceModal from '../components/NewInvoiceModal';
@@ -110,6 +111,7 @@ const TABS = [
   { id: 'month', label: 'This Month' },
   { id: 'jobcost', label: 'Job Cost' },
   { id: 'tax', label: 'Tax Summary' },
+  { id: 'scorecard', label: 'Scorecard' },
   { id: 'bid', label: 'Bid Estimator' },
   { id: 'ask', label: 'Ask', mobileOnly: true },
 ];
@@ -456,6 +458,9 @@ export default function Dashboard() {
 
               {/* Tax Summary (Pro) — TaxSummary shows a locked state for Solo users */}
               {view === 'tax' && <TaxSummary onUpgrade={startPortal} />}
+
+              {/* Customer Scorecard (Pro) — locked state for Solo users */}
+              {view === 'scorecard' && <CustomerScorecard onUpgrade={startPortal} />}
 
               {/* Bid Estimator (Pro) — BidEstimator shows a locked state for Solo users */}
               {view === 'bid' && <BidEstimator onUpgrade={startPortal} />}

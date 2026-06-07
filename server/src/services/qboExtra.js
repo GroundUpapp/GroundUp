@@ -16,6 +16,7 @@ import {
   generatePaymentRisk,
   generateMonthlyPLSummary,
   generateBidEstimate,
+  generateCustomerScorecard,
 } from './aiInsight.js';
 import { sendEmail } from './email.js';
 
@@ -726,6 +727,161 @@ export async function sendCustomReminder(qbo, invoiceId, message, replyTo) {
     replyTo,
   });
   return { sent: true, customer, email };
+}
+
+// Deterministic 0–100 customer score (higher = better) from pay behavior and
+// margin. Drives the default ordering and the green/yellow/red tier, and keeps
+// the AI's ranking honest (it's the full fallback when the AI is unavailable).
+function scoreCustomer(c) {
+  let s = 50;
+  if (c.avgDaysToPay != null) {
+    if (c.avgDaysToPay <= 15) s += 20;
+    else if (c.avgDaysToPay <= 30) s += 8;
+    else if (c.avgDaysToPay <= 45) s -= 6;
+    else s -= 18;
+  }
+  if (c.latePaymentRate != null) {
+    if (c.latePaymentRate === 0) s += 15;
+    else if (c.latePaymentRate <= 25) s += 4;
+    else if (c.latePaymentRate <= 50) s -= 12;
+    else s -= 25;
+  }
+  if (c.marginPct != null) {
+    if (c.marginPct >= 30) s += 15;
+    else if (c.marginPct >= 15) s += 6;
+    else if (c.marginPct >= 0) s -= 4;
+    else s -= 20;
+  }
+  return Math.max(0, Math.min(100, s));
+}
+
+const tierForScore = (score) => (score >= 65 ? 'top' : score >= 42 ? 'average' : 'problematic');
+
+/**
+ * Customer Scorecard (Pro). For every customer with invoice history, computes
+ * total revenue, average invoice size, average days to pay, late-payment rate,
+ * number of jobs, and profit margin (when job costs are tracked), then hands the
+ * lot to Claude to rank best-to-worst and write a plain-English summary.
+ * Returns { summary, customers: [{ ...metrics, tier, note }] }, best first.
+ *
+ * Days-to-pay/lateness are derived the same way the late-payment predictor does:
+ * an invoice's "paid on" date is the earliest payment transaction linked to it.
+ * Jobs ≈ the customer's estimates (bids); costs ≈ expenses tagged to them.
+ */
+export async function getCustomerScorecard(qbo) {
+  const [invRes, payRes, estRes, purRes] = await Promise.all([
+    call(qbo, 'findInvoices', { fetchAll: true }),
+    call(qbo, 'findPayments', { fetchAll: true }).catch(() => null),
+    call(qbo, 'findEstimates', { fetchAll: true }).catch(() => null),
+    call(qbo, 'findPurchases', { fetchAll: true }).catch(() => null),
+  ]);
+  const invoices = asArray(invRes?.QueryResponse?.Invoice);
+
+  // invoiceId -> earliest date a linked payment was received.
+  const paidOn = new Map();
+  for (const pmt of asArray(payRes?.QueryResponse?.Payment)) {
+    const when = pmt.TxnDate;
+    if (!when) continue;
+    for (const line of asArray(pmt.Line)) {
+      for (const lt of asArray(line.LinkedTxn)) {
+        if (lt.TxnType === 'Invoice' && lt.TxnId) {
+          const prev = paidOn.get(lt.TxnId);
+          if (!prev || when < prev) paidOn.set(lt.TxnId, when);
+        }
+      }
+    }
+  }
+
+  const estimatesByCustomer = new Map();
+  for (const est of asArray(estRes?.QueryResponse?.Estimate)) {
+    const id = est.CustomerRef?.value;
+    if (id) estimatesByCustomer.set(id, (estimatesByCustomer.get(id) || 0) + 1);
+  }
+
+  const costsByCustomer = new Map();
+  for (const p of asArray(purRes?.QueryResponse?.Purchase)) {
+    for (const line of asArray(p.Line)) {
+      const ref = line.AccountBasedExpenseLineDetail?.CustomerRef;
+      if (ref?.value) {
+        costsByCustomer.set(ref.value, (costsByCustomer.get(ref.value) || 0) + num(line.Amount));
+      }
+    }
+  }
+
+  // Aggregate revenue + payment behavior per customer from their invoices.
+  const byCustomer = new Map();
+  for (const inv of invoices) {
+    const id = inv.CustomerRef?.value;
+    if (!id) continue;
+    const total = num(inv.TotalAmt);
+    if (total <= 0) continue; // skip zero-dollar / credit invoices
+    if (!byCustomer.has(id)) {
+      byCustomer.set(id, {
+        id,
+        name: inv.CustomerRef?.name || 'Unknown',
+        revenue: 0,
+        invoiceCount: 0,
+        daysToPaySum: 0,
+        settled: 0,
+        late: 0,
+      });
+    }
+    const r = byCustomer.get(id);
+    r.revenue += total;
+    r.invoiceCount += 1;
+
+    // Only fully-settled invoices (paid in full, with a known payment date)
+    // inform how fast and how reliably the customer pays.
+    const issued = inv.TxnDate;
+    const paid = paidOn.get(inv.Id);
+    if (issued && paid && num(inv.Balance) <= 0.005) {
+      r.settled += 1;
+      r.daysToPaySum += Math.max(0, daysBetween(issued, new Date(`${paid}T00:00:00Z`)));
+      if (inv.DueDate && paid > inv.DueDate) r.late += 1;
+    }
+  }
+
+  const customers = [...byCustomer.values()]
+    .map((r) => {
+      const revenue = Math.round(r.revenue);
+      const costs = Math.round(costsByCustomer.get(r.id) || 0);
+      const hasCosts = costs > 0;
+      const c = {
+        id: r.id,
+        name: r.name,
+        revenue,
+        invoiceCount: r.invoiceCount,
+        avgInvoice: Math.round(revenue / r.invoiceCount),
+        avgDaysToPay: r.settled ? Math.round(r.daysToPaySum / r.settled) : null,
+        latePaymentRate: r.settled ? Math.round((r.late / r.settled) * 100) : null,
+        invoicesPaid: r.settled,
+        jobs: estimatesByCustomer.get(r.id) || r.invoiceCount,
+        margin: hasCosts ? revenue - costs : null,
+        marginPct: hasCosts && revenue > 0 ? Math.round(((revenue - costs) / revenue) * 100) : null,
+      };
+      const score = scoreCustomer(c);
+      return { ...c, score, tier: tierForScore(score) };
+    })
+    // Biggest customers first; cap the AI payload for very large company files.
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 25);
+
+  const { summary, ranking } = await generateCustomerScorecard(customers);
+
+  // Join the AI's ranking (name, tier, note, in order) back onto the full metric
+  // rows. The ranking is guaranteed complete and ordered best-first.
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  const byName = new Map(customers.map((c) => [norm(c.name), c]));
+  const ordered = ranking
+    .map((r) => {
+      const c = byName.get(norm(r.name));
+      if (!c) return null;
+      const { score, ...metrics } = c;
+      return { ...metrics, tier: r.tier, note: r.note };
+    })
+    .filter(Boolean);
+
+  return { summary, customers: ordered };
 }
 
 /**

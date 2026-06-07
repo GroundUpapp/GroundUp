@@ -23,6 +23,7 @@ import {
   getPaymentRisk,
   getMonthlyPL,
   getBidEstimate,
+  getCustomerScorecard,
 } from '../services/qboExtra.js';
 import { remindedWithin7Days, logReminder } from '../services/reminderLog.js';
 
@@ -178,6 +179,17 @@ router.get('/quickbooks/monthly-pl', requireAuth, requirePro, requireQuickBooks,
   } catch (err) {
     console.error('QuickBooks monthly-pl error:', err);
     res.status(500).json({ error: 'Failed to load monthly P&L' });
+  }
+});
+
+// GET /api/quickbooks/customer-scorecard — per-customer scorecard (revenue, pay
+// behavior, jobs, margin) ranked by AI with a plain-English summary on top.
+router.get('/quickbooks/customer-scorecard', requireAuth, requirePro, requireQuickBooks, async (req, res) => {
+  try {
+    res.json(await getCustomerScorecard(req.qbo));
+  } catch (err) {
+    console.error('QuickBooks customer-scorecard error:', err);
+    res.status(500).json({ error: 'Failed to load customer scorecard' });
   }
 });
 
