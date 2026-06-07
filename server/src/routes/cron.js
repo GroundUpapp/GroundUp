@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import { runWeeklyReports, runCashAlerts } from '../services/retention.js';
 
@@ -8,7 +9,11 @@ const router = Router();
 function authorized(req) {
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret) return false;
-  return (req.headers.authorization || '') === `Bearer ${secret}`;
+  const provided = req.headers.authorization || '';
+  const expected = `Bearer ${secret}`;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 router.get('/cron/weekly', async (req, res) => {

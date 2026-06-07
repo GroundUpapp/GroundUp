@@ -114,12 +114,7 @@ router.post('/quickbooks/invoices/:id/remind', requireAuth, requireQuickBooks, a
         .status(429)
         .json({ error: 'You already reminded this customer in the last 7 days.' });
     }
-    const result = await sendInvoiceReminder(
-      req.qbo,
-      invoiceId,
-      req.body?.email,
-      req.quickbooks.realmId
-    );
+    const result = await sendInvoiceReminder(req.qbo, invoiceId, req.quickbooks.realmId);
     await logReminder(userId, invoiceId, result.customer);
     res.json(result);
   } catch (err) {

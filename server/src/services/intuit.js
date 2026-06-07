@@ -49,7 +49,12 @@ export async function refreshAccessToken(refreshToken) {
 // --- OAuth state (CSRF protection + carries the user id across redirects) ---
 // The full-page OAuth redirect can't send our Supabase session, so we embed the
 // user id in a signed `state` value and verify the signature on the callback.
-const STATE_SECRET = process.env.SUPABASE_SERVICE_ROLE_KEY || 'dev-only-secret';
+// No insecure fallback: a missing secret would let anyone forge `state` and
+// impersonate a user on connect, so fail fast at startup instead.
+const STATE_SECRET = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!STATE_SECRET) {
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY is required to sign QuickBooks OAuth state.');
+}
 
 export function signState(userId) {
   const nonce = crypto.randomBytes(8).toString('hex');

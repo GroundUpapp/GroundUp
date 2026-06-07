@@ -344,11 +344,13 @@ export async function createExpense(qbo, { payee, amount, category = 'other', jo
  * note with the AI (returned/logged), then emails the invoice via QuickBooks'
  * email API (sendInvoicePdf). Returns the customer + draft for the UI.
  */
-export async function sendInvoiceReminder(qbo, invoiceId, fallbackEmail, realmId) {
+export async function sendInvoiceReminder(qbo, invoiceId, realmId) {
   if (!invoiceId) throw new Error('Missing invoice.');
 
   const inv = await call(qbo, 'getInvoice', String(invoiceId));
-  const email = fallbackEmail || inv?.BillEmail?.Address;
+  // Only ever send to the email on file in QuickBooks — never a client-supplied
+  // address — so this can't be used to send invoices to arbitrary recipients.
+  const email = inv?.BillEmail?.Address;
   if (!email) throw new Error('No email on file for this customer.');
 
   const customer = inv?.CustomerRef?.name || 'Customer';

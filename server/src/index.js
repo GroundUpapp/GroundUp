@@ -25,7 +25,10 @@ app.use(
 app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), webhookHandler);
 
 app.use(express.json());
-app.use(morgan('dev'));
+// Log the path only — never the query string, which can carry session tokens
+// and OAuth codes (e.g. /api/auth/quickbooks?token=...).
+morgan.token('cleanurl', (req) => req.path);
+app.use(morgan(':method :cleanurl :status :response-time ms'));
 
 // Health check
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
