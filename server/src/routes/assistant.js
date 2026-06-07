@@ -2,6 +2,7 @@ import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { requireAuth } from '../middleware/auth.js';
 import { requireQuickBooks } from '../middleware/quickbooks.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 import { getAssistantContext } from '../services/qboExtra.js';
 
 const router = Router();
@@ -24,7 +25,12 @@ How to talk:
 - It's fine to suggest one practical next step ("send a reminder", "follow up on the Maple St job").`;
 
 // POST /api/assistant — body: { messages: [{ role:'user'|'assistant', content }] }
-router.post('/assistant', requireAuth, requireQuickBooks, async (req, res) => {
+router.post(
+  '/assistant',
+  requireAuth,
+  rateLimit({ name: 'assistant', max: 20, window: '1 m' }),
+  requireQuickBooks,
+  async (req, res) => {
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
       return res.status(503).json({ error: 'Assistant is not configured yet.' });

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { requireQuickBooks } from '../middleware/quickbooks.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 import {
   getSummary,
   getRecentInvoices,
@@ -105,7 +106,12 @@ router.post('/quickbooks/invoices', requireAuth, requireQuickBooks, async (req, 
 });
 
 // POST /api/quickbooks/invoices/:id/remind — AI-drafted reminder, emailed via QBO.
-router.post('/quickbooks/invoices/:id/remind', requireAuth, requireQuickBooks, async (req, res) => {
+router.post(
+  '/quickbooks/invoices/:id/remind',
+  requireAuth,
+  rateLimit({ name: 'remind', max: 20, window: '1 h' }),
+  requireQuickBooks,
+  async (req, res) => {
   try {
     const userId = req.user.id;
     const invoiceId = req.params.id;
