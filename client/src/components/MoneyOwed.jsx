@@ -4,6 +4,39 @@ import { currency } from '../lib/format';
 import Spinner from './Spinner';
 import { usePlan } from '../hooks/usePlan';
 
+// Late-payment risk styling, keyed by the backend's risk levels.
+const RISK = {
+  on_time: { label: 'On time', badge: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300', dot: 'bg-emerald-400' },
+  at_risk: { label: 'At risk', badge: 'border-amber-500/30 bg-amber-500/10 text-amber-300', dot: 'bg-amber-400' },
+  likely_late: { label: 'Likely late', badge: 'border-red-500/30 bg-red-500/10 text-red-300', dot: 'bg-red-400' },
+};
+
+// Pro: a colored badge with the AI reasoning on hover (title) or tap-to-expand.
+function RiskBadge({ assessment }) {
+  const [open, setOpen] = useState(false);
+  const meta = assessment && RISK[assessment.risk];
+  if (!meta) return null;
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title={assessment.reason}
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition ${meta.badge}`}
+      >
+        <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+        {meta.label}
+        <span className="text-[10px] opacity-60">{open ? '▲' : 'ⓘ'}</span>
+      </button>
+      {open && (
+        <p className="mt-1.5 rounded-lg border border-amber-900/30 bg-ground-800/60 px-3 py-2 text-xs leading-relaxed text-cream-200">
+          {assessment.reason}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // --- Solo: auto-send reminder (re-sends the QuickBooks invoice, no preview) ---
 function SoloRow({ inv, onToast }) {
   const [state, setState] = useState('idle');
@@ -63,7 +96,7 @@ function SoloRow({ inv, onToast }) {
 }
 
 // --- Pro: review/edit the AI-drafted follow-up, then approve & send ---
-function ProRow({ item, onToast }) {
+function ProRow({ item, risk, onToast }) {
   const [text, setText] = useState(item.draft || '');
   const [state, setState] = useState('idle');
   const [msg, setMsg] = useState(null);
@@ -102,6 +135,8 @@ function ProRow({ item, onToast }) {
         </span>
       </div>
 
+      <RiskBadge assessment={risk} />
+
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -126,17 +161,20 @@ function ProRow({ item, onToast }) {
   );
 }
 
-function UpcomingRow({ inv }) {
+function UpcomingRow({ inv, risk }) {
   return (
-    <div className="card flex items-center justify-between gap-3 opacity-75">
-      <div className="min-w-0">
-        <p className="truncate font-semibold text-cream-50">{inv.customer}</p>
-        <p className="text-sm text-cream-300/70">
-          due {inv.dueDate || 'soon'}
-          {inv.number && <span className="text-cream-300/40"> · #{inv.number}</span>}
-        </p>
+    <div className="card opacity-75">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-cream-50">{inv.customer}</p>
+          <p className="text-sm text-cream-300/70">
+            due {inv.dueDate || 'soon'}
+            {inv.number && <span className="text-cream-300/40"> · #{inv.number}</span>}
+          </p>
+        </div>
+        <span className="text-xl font-bold text-cream-50">{currency(inv.amount)}</span>
       </div>
-      <span className="text-xl font-bold text-cream-50">{currency(inv.amount)}</span>
+      <RiskBadge assessment={risk} />
     </div>
   );
 }
@@ -145,6 +183,7 @@ export default function MoneyOwed({ refreshKey = 0, onUpgrade }) {
   const { isPro, loading: planLoading } = usePlan();
   const [owed, setOwed] = useState(null);
   const [queue, setQueue] = useState(null); // Pro only
+  const [risk, setRisk] = useState(null); // Pro only: invoiceId -> { risk, reason }
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
 
@@ -153,6 +192,7 @@ export default function MoneyOwed({ refreshKey = 0, onUpgrade }) {
     let active = true;
     setOwed(null);
     setQueue(null);
+    setRisk(null);
     setError(null);
 
     apiGet('/quickbooks/money-owed')
@@ -163,6 +203,17 @@ export default function MoneyOwed({ refreshKey = 0, onUpgrade }) {
       apiGet('/quickbooks/reminders/queue')
         .then((d) => active && setQueue(d.queue || []))
         .catch(() => active && setQueue([])); // non-fatal: still show the list
+
+      // Payment-risk badges are an enhancement — load separately so they never
+      // block or break the list if the prediction call is slow or fails.
+      apiGet('/quickbooks/payment-risk')
+        .then((d) => {
+          if (!active) return;
+          const map = {};
+          for (const r of d.invoices || []) map[r.id] = { risk: r.risk, reason: r.reason };
+          setRisk(map);
+        })
+        .catch(() => active && setRisk({}));
     }
 
     return () => {
@@ -212,14 +263,26 @@ export default function MoneyOwed({ refreshKey = 0, onUpgrade }) {
       ) : isPro ? (
         <>
           {(queue || []).map((item) => (
-            <ProRow key={item.id} item={item} onToast={setToast} />
+            <ProRow key={item.id} item={item} risk={risk?.[item.id]} onToast={setToast} />
           ))}
           {upcoming.map((inv) => (
-            <UpcomingRow key={inv.id} inv={inv} />
+            <UpcomingRow key={inv.id} inv={inv} risk={risk?.[inv.id]} />
           ))}
         </>
       ) : (
         <>
+          <button
+            onClick={onUpgrade}
+            className="card w-full text-left transition hover:border-amber-500/50"
+          >
+            <p className="text-sm font-semibold text-amber-300">
+              Upgrade to Pro to see payment predictions →
+            </p>
+            <p className="mt-0.5 text-xs text-cream-300/70">
+              Pro flags which invoices are likely to be paid late, based on each
+              customer's history — so you can chase the risky ones first.
+            </p>
+          </button>
           {owed.map((inv) => (
             <SoloRow key={inv.id} inv={inv} onToast={setToast} />
           ))}

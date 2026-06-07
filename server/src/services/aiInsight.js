@@ -171,3 +171,95 @@ export async function generateReminderDraft({ customer, amount, daysOverdue, com
     return fallback;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Late-payment risk (Pro)
+// ---------------------------------------------------------------------------
+
+const RISK_LEVELS = ['on_time', 'at_risk', 'likely_late'];
+
+// Deterministic risk call from a customer's history, used as the fallback when
+// the AI is unavailable and to keep the AI's output honest.
+function fallbackPaymentRisk({ customer, daysOverdue, history }) {
+  const { invoicesPaid, avgDaysToPay, latePaymentRate, lastFourLate, lastFourCount } = history;
+
+  if (!invoicesPaid) {
+    if (daysOverdue > 0) {
+      return {
+        risk: 'likely_late',
+        reason: `${customer} is already ${daysOverdue} days overdue and has no prior payment history — send a reminder now.`,
+      };
+    }
+    return {
+      risk: 'at_risk',
+      reason: `${customer} has no paid invoices on record yet, so there's no track record to go on — keep an eye on this one.`,
+    };
+  }
+
+  const rate = latePaymentRate; // 0..1
+  let risk = 'on_time';
+  if (daysOverdue > 0 || rate >= 0.5) risk = 'likely_late';
+  else if (rate >= 0.25 || (avgDaysToPay != null && avgDaysToPay > 3)) risk = 'at_risk';
+
+  let reason;
+  if (lastFourLate >= 2) {
+    reason = `${customer} has paid late ${lastFourLate} of their last ${lastFourCount} invoices — consider sending a reminder now.`;
+  } else if (daysOverdue > 0) {
+    reason = `${customer} usually pays in about ${avgDaysToPay} days, but this invoice is already ${daysOverdue} days overdue — worth a nudge.`;
+  } else if (risk === 'on_time') {
+    reason = `${customer} has a clean record, paying in about ${avgDaysToPay} days on average — low risk.`;
+  } else {
+    reason = `${customer} averages about ${avgDaysToPay} days to pay and has been late on ${Math.round(rate * 100)}% of invoices — keep an eye on it.`;
+  }
+  return { risk, reason };
+}
+
+const PAYMENT_RISK_SYSTEM =
+  'You assess how likely a small construction contractor\'s customer is to pay an ' +
+  'OPEN invoice late. You are given the customer name, the open amount, how many ' +
+  'days overdue it already is (0 = not yet due), and the customer\'s payment ' +
+  'history: invoices paid, average days to pay, late-payment rate, and how many ' +
+  'of their last few invoices were paid late. Respond with ONLY a JSON object: ' +
+  '{"risk": "on_time" | "at_risk" | "likely_late", "reason": "<one sentence>"}. ' +
+  'The reason must be one short, plain, blue-collar sentence in dollars and days ' +
+  '(not percentages), citing the real history — e.g. "Jones Construction has paid ' +
+  'late 3 of their last 4 invoices — consider sending a reminder now." Never invent ' +
+  'numbers that are not in the data. If there is no history, say so plainly. JSON only, no preamble.';
+
+export async function generatePaymentRisk({ customer, amount, daysOverdue, dueDate, history }) {
+  const fallback = fallbackPaymentRisk({ customer, daysOverdue, history });
+  if (!process.env.ANTHROPIC_API_KEY) return fallback;
+
+  try {
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY.trim() });
+    const resp = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 200,
+      system: [{ type: 'text', text: PAYMENT_RISK_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      messages: [
+        {
+          role: 'user',
+          content: JSON.stringify({ customer, amount, daysOverdue, dueDate, history }),
+        },
+      ],
+    });
+    const text = resp.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+      .trim();
+
+    // Be defensive: pull the first JSON object out of the response.
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return fallback;
+    const parsed = JSON.parse(match[0]);
+    const risk = RISK_LEVELS.includes(parsed.risk) ? parsed.risk : fallback.risk;
+    const reason = typeof parsed.reason === 'string' && parsed.reason.trim()
+      ? parsed.reason.trim()
+      : fallback.reason;
+    return { risk, reason };
+  } catch (e) {
+    console.error('generatePaymentRisk error:', e.message);
+    return fallback;
+  }
+}

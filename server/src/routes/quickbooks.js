@@ -20,6 +20,7 @@ import {
   getReminderQueue,
   sendCustomReminder,
   getTaxSummary,
+  getPaymentRisk,
 } from '../services/qboExtra.js';
 import { remindedWithin7Days, logReminder } from '../services/reminderLog.js';
 
@@ -164,6 +165,17 @@ router.get('/quickbooks/tax-summary', requireAuth, requirePro, requireQuickBooks
   } catch (err) {
     console.error('QuickBooks tax-summary error:', err);
     res.status(500).json({ error: 'Failed to load tax summary' });
+  }
+});
+
+// GET /api/quickbooks/payment-risk — per open invoice, an AI late-payment risk
+// assessment (on_time / at_risk / likely_late) built from the customer's history.
+router.get('/quickbooks/payment-risk', requireAuth, requirePro, requireQuickBooks, async (req, res) => {
+  try {
+    res.json({ invoices: await getPaymentRisk(req.qbo) });
+  } catch (err) {
+    console.error('QuickBooks payment-risk error:', err);
+    res.status(500).json({ error: 'Failed to load payment risk' });
   }
 });
 

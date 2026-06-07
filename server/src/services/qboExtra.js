@@ -9,7 +9,12 @@
  * defensive: QBO company files vary, so helpers fall back rather than throw.
  */
 import { call, asArray, num, ymd } from './qboData.js';
-import { generateReminderDraft, generateJobCostSummary, generateTaxSummary } from './aiInsight.js';
+import {
+  generateReminderDraft,
+  generateJobCostSummary,
+  generateTaxSummary,
+  generatePaymentRisk,
+} from './aiInsight.js';
 import { sendEmail } from './email.js';
 
 function escapeHtml(s) {
@@ -506,6 +511,117 @@ export async function getTaxSummary(qbo, realmId) {
   const paragraph = await generateTaxSummary({ quarter: label, companyName, total, breakdown });
 
   return { quarter: label, startDate: start, endDate: end, total, breakdown, paragraph };
+}
+
+/**
+ * Late-payment predictor (Pro). For each open invoice, builds the customer's
+ * payment history from their settled invoices — average days to pay, late-payment
+ * rate, and their last 4 invoices — and asks the AI for a risk assessment
+ * (on_time / at_risk / likely_late) with a plain-English reason.
+ *
+ * "When was an invoice paid?" isn't a field on the invoice, so it's derived from
+ * the Payment transactions linked to each invoice (earliest linked payment date).
+ */
+export async function getPaymentRisk(qbo) {
+  const [invRes, payRes] = await Promise.all([
+    call(qbo, 'findInvoices', { fetchAll: true }),
+    call(qbo, 'findPayments', { fetchAll: true }).catch(() => null),
+  ]);
+  const invoices = asArray(invRes?.QueryResponse?.Invoice);
+
+  // invoiceId -> earliest date a linked payment was received.
+  const paidOn = new Map();
+  for (const pmt of asArray(payRes?.QueryResponse?.Payment)) {
+    const when = pmt.TxnDate;
+    if (!when) continue;
+    for (const line of asArray(pmt.Line)) {
+      for (const lt of asArray(line.LinkedTxn)) {
+        if (lt.TxnType === 'Invoice' && lt.TxnId) {
+          const prev = paidOn.get(lt.TxnId);
+          if (!prev || when < prev) paidOn.set(lt.TxnId, when);
+        }
+      }
+    }
+  }
+
+  // Per-customer history from fully-settled invoices.
+  const historyByCustomer = new Map();
+  for (const inv of invoices) {
+    const custId = inv.CustomerRef?.value;
+    const issued = inv.TxnDate;
+    const paid = paidOn.get(inv.Id);
+    // Only settled invoices (paid in full, with a known payment date) count.
+    if (!custId || !issued || !paid || num(inv.Balance) > 0.005 || num(inv.TotalAmt) <= 0) continue;
+    const paidDate = new Date(`${paid}T00:00:00Z`);
+    const due = inv.DueDate || null;
+    if (!historyByCustomer.has(custId)) historyByCustomer.set(custId, []);
+    historyByCustomer.get(custId).push({
+      number: inv.DocNumber || null,
+      amount: Math.round(num(inv.TotalAmt)),
+      paid,
+      daysToPay: Math.max(0, daysBetween(issued, paidDate)),
+      late: due ? paid > due : false,
+    });
+  }
+
+  // Compact history summary for one customer: averages + their last 4 invoices.
+  function summarize(custId) {
+    const records = (historyByCustomer.get(custId) || [])
+      .slice()
+      .sort((a, b) => (a.paid < b.paid ? 1 : -1)); // most recent first
+    const n = records.length;
+    if (n === 0) {
+      return { invoicesPaid: 0, avgDaysToPay: null, latePaymentRate: 0, lastFour: [], lastFourLate: 0, lastFourCount: 0 };
+    }
+    const lastFour = records.slice(0, 4);
+    return {
+      invoicesPaid: n,
+      avgDaysToPay: Math.round(records.reduce((s, r) => s + r.daysToPay, 0) / n),
+      latePaymentRate: records.filter((r) => r.late).length / n,
+      lastFour,
+      lastFourLate: lastFour.filter((r) => r.late).length,
+      lastFourCount: lastFour.length,
+    };
+  }
+
+  // Open invoices, biggest balances first; cap the AI fan-out.
+  const open = invoices
+    .filter((inv) => num(inv.Balance) > 0.005)
+    .sort((a, b) => num(b.Balance) - num(a.Balance))
+    .slice(0, 25);
+
+  return Promise.all(
+    open.map(async (inv) => {
+      const customer = inv.CustomerRef?.name || 'Unknown';
+      const due = inv.DueDate || inv.TxnDate || null;
+      const daysOverdue = Math.max(0, daysBetween(due));
+      const history = summarize(inv.CustomerRef?.value);
+      const { risk, reason } = await generatePaymentRisk({
+        customer,
+        amount: Math.round(num(inv.Balance)),
+        daysOverdue,
+        dueDate: due,
+        history,
+      });
+      return {
+        id: inv.Id,
+        number: inv.DocNumber || null,
+        customer,
+        amount: num(inv.Balance),
+        dueDate: due,
+        daysOverdue,
+        risk,
+        reason,
+        history: {
+          invoicesPaid: history.invoicesPaid,
+          avgDaysToPay: history.avgDaysToPay,
+          latePaymentRate: Math.round(history.latePaymentRate * 100),
+          lastFourLate: history.lastFourLate,
+          lastFourCount: history.lastFourCount,
+        },
+      };
+    })
+  );
 }
 
 /** Overdue invoices with an AI-drafted follow-up message for each (Pro queue). */
