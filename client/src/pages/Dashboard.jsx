@@ -16,6 +16,7 @@ import MoneyOwed from '../components/MoneyOwed';
 import JobBoard from '../components/JobBoard';
 import JobCost from '../components/JobCost';
 import TaxSummary from '../components/TaxSummary';
+import ThisMonth from '../components/ThisMonth';
 import AiAssistant from '../components/AiAssistant';
 import NewInvoiceModal from '../components/NewInvoiceModal';
 import LogExpenseModal from '../components/LogExpenseModal';
@@ -105,6 +106,7 @@ const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'money', label: 'Money Owed' },
   { id: 'jobs', label: 'Jobs' },
+  { id: 'month', label: 'This Month' },
   { id: 'jobcost', label: 'Job Cost' },
   { id: 'tax', label: 'Tax Summary' },
   { id: 'ask', label: 'Ask', mobileOnly: true },
@@ -443,6 +445,9 @@ export default function Dashboard() {
                 ) : (
                   connectBanner
                 ))}
+
+              {/* This Month (Pro) — ThisMonth shows a locked state for Solo users */}
+              {view === 'month' && <ThisMonth onUpgrade={startPortal} />}
 
               {/* Job Cost (Pro) — JobCost shows a locked state for Solo users */}
               {view === 'jobcost' && <JobCost onUpgrade={startPortal} />}

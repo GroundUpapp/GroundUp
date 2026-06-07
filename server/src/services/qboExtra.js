@@ -8,12 +8,13 @@
  * an invoice or log an expense without picking GL accounts. All of it is
  * defensive: QBO company files vary, so helpers fall back rather than throw.
  */
-import { call, asArray, num, ymd } from './qboData.js';
+import { call, asArray, num, ymd, parseProfitAndLoss } from './qboData.js';
 import {
   generateReminderDraft,
   generateJobCostSummary,
   generateTaxSummary,
   generatePaymentRisk,
+  generateMonthlyPLSummary,
 } from './aiInsight.js';
 import { sendEmail } from './email.js';
 
@@ -511,6 +512,51 @@ export async function getTaxSummary(qbo, realmId) {
   const paragraph = await generateTaxSummary({ quarter: label, companyName, total, breakdown });
 
   return { quarter: label, startDate: start, endDate: end, total, breakdown, paragraph };
+}
+
+// This month (month-to-date) and last month (full calendar month) bounds, each
+// with a "June 2026"-style label. All in UTC to match QBO's date handling.
+function monthRanges(today = new Date()) {
+  const y = today.getUTCFullYear();
+  const m = today.getUTCMonth();
+  const thisStart = new Date(Date.UTC(y, m, 1));
+  const lastStart = new Date(Date.UTC(y, m - 1, 1));
+  const lastEnd = new Date(Date.UTC(y, m, 0)); // day 0 of this month = last day of prev
+  const label = (d) =>
+    d.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  return {
+    thisMonth: { start: ymd(thisStart), end: ymd(today), label: label(thisStart) },
+    lastMonth: { start: ymd(lastStart), end: ymd(lastEnd), label: label(lastStart) },
+  };
+}
+
+/**
+ * Monthly P&L (Pro). Pulls this month (month-to-date) and last month's
+ * ProfitAndLoss from QuickBooks — revenue, expenses by category, and net — then
+ * hands both to Claude for a plain-English paragraph comparing them. The two
+ * month objects feed the dashboard's two-column comparison directly.
+ * Returns { thisMonth, lastMonth, paragraph }.
+ */
+export async function getMonthlyPL(qbo) {
+  const ranges = monthRanges();
+
+  const [thisReport, lastReport] = await Promise.all([
+    call(qbo, 'reportProfitAndLoss', {
+      start_date: ranges.thisMonth.start,
+      end_date: ranges.thisMonth.end,
+    }),
+    call(qbo, 'reportProfitAndLoss', {
+      start_date: ranges.lastMonth.start,
+      end_date: ranges.lastMonth.end,
+    }),
+  ]);
+
+  const thisMonth = { ...ranges.thisMonth, partial: true, ...parseProfitAndLoss(thisReport) };
+  const lastMonth = { ...ranges.lastMonth, partial: false, ...parseProfitAndLoss(lastReport) };
+
+  const paragraph = await generateMonthlyPLSummary({ thisMonth, lastMonth });
+
+  return { thisMonth, lastMonth, paragraph };
 }
 
 /**

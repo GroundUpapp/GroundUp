@@ -54,6 +54,72 @@ function findSectionTotal(report, group, nameRegex) {
   return num(cols[cols.length - 1]?.value); // last column = total
 }
 
+// Finds a top-level report section by its QBO `group` (e.g. 'Income',
+// 'Expenses', 'COGS'), falling back to a header-name match. Returns the whole
+// section row so callers can read both its summary total and its line items.
+function findSection(report, group, nameRegex) {
+  let found = null;
+  const walk = (rows) => {
+    for (const r of asArray(rows?.Row)) {
+      if (found) return;
+      const header = r.Header?.ColData?.[0]?.value || '';
+      if ((group && r.group === group) || (nameRegex && nameRegex.test(header))) {
+        found = r;
+        return;
+      }
+      if (r.Rows) walk(r.Rows);
+    }
+  };
+  walk(report?.Rows);
+  return found;
+}
+
+// The line items directly under a section as { name, amount }. A child that is
+// itself a sub-section (a parent account with sub-accounts) is taken at its
+// rolled-up Summary total so amounts are never double-counted.
+function sectionLineItems(section) {
+  const out = [];
+  for (const r of asArray(section?.Rows?.Row)) {
+    if (r.Summary?.ColData) {
+      const cols = r.Summary.ColData;
+      const name = r.Header?.ColData?.[0]?.value || cols[0]?.value || 'Other';
+      out.push({ name, amount: num(cols[cols.length - 1]?.value) });
+    } else if (r.ColData) {
+      const cols = r.ColData;
+      out.push({ name: cols[0]?.value || 'Other', amount: num(cols[cols.length - 1]?.value) });
+    }
+  }
+  return out;
+}
+
+/**
+ * Pulls the plain-English shape out of a ProfitAndLoss report:
+ * { revenue, expenses, net, categories: [{ name, amount }] }.
+ *
+ * Expenses is derived as revenue − net so the three headline numbers always
+ * reconcile, no matter how the company file splits cost-of-goods-sold vs.
+ * operating expenses or books other income/expense. `categories` merges the
+ * line items under the COGS and Expenses sections for a readable breakdown.
+ */
+export function parseProfitAndLoss(report) {
+  const revenue = findSectionTotal(report, 'Income', /income/i);
+  const net = findSectionTotal(report, 'NetIncome', /net income/i);
+
+  const categories = [];
+  for (const group of ['COGS', 'Expenses']) {
+    for (const item of sectionLineItems(findSection(report, group))) {
+      if (item.amount) categories.push({ name: item.name, amount: Math.round(item.amount) });
+    }
+  }
+
+  return {
+    revenue: Math.round(revenue),
+    expenses: Math.round(revenue - net),
+    net: Math.round(net),
+    categories,
+  };
+}
+
 // Maps the CashFlow report's "net cash increase" row to per-day values.
 function parseDailyCashFlow(report) {
   const cols = asArray(report?.Columns?.Column);

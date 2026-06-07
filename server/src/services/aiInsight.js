@@ -133,7 +133,8 @@ export async function generateTaxSummary({ quarter, companyName, total, breakdow
   }
 }
 
-// A firm-but-professional payment reminder draft for a single overdue invoice.
+// A warm, personal payment reminder draft for a single overdue invoice — sounds
+// like the contractor wrote it themselves, not a billing department.
 export async function generateReminderDraft({ customer, amount, daysOverdue, companyName, invoiceNumber }) {
   const fallback =
     `Hi ${customer},\n\nThis is a friendly reminder that invoice${invoiceNumber ? ` #${invoiceNumber}` : ''} for ` +
@@ -149,7 +150,7 @@ export async function generateReminderDraft({ customer, amount, daysOverdue, com
       system: [
         {
           type: 'text',
-          text: 'Write a short, professional but firm payment-reminder email body for an overdue contractor invoice. Polite, clear about the amount and days overdue, asks for payment or a reply. No subject line, no placeholders in brackets — use the real details given. Sign off with the company name.',
+          text: 'Write a short, friendly payment reminder for an overdue contractor invoice, in the contractor\'s own voice — like a quick text or note from the person who actually did the work, NOT from a billing department. Use plain, conversational language ("hey", "just a heads up", "no worries", "shoot me a text"). Address the customer by name (first name if it\'s a person), and work in the invoice number, the amount owed, and how many days overdue it is. Keep it easygoing and understanding — assume it just slipped their mind. If the data includes a pay link (e.g. payLink / viewAndPayUrl), add a "view and pay online" line with the real URL; if there is no link, leave it out. Sign off with the company name. Hard rules: 3 to 5 sentences max; no subject line; no placeholders in brackets — use the real details given; no formal or corporate language; never use phrases like "remit payment", "past due", or "at your earliest convenience". Example tone: "Hey Dave, just wanted to follow up on invoice #1038 for $106.92 — it was due 37 days ago and hasn\'t come through yet. No worries if it got lost in the shuffle, here\'s the link to pay online. Let me know if you have any questions. Thanks, Craig\'s Design and Landscaping".',
           cache_control: { type: 'ephemeral' },
         },
       ],
@@ -260,6 +261,59 @@ export async function generatePaymentRisk({ customer, amount, daysOverdue, dueDa
     return { risk, reason };
   } catch (e) {
     console.error('generatePaymentRisk error:', e.message);
+    return fallback;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Monthly P&L comparison (Pro)
+// ---------------------------------------------------------------------------
+
+const MONTHLY_PL_SYSTEM =
+  'You are the money guy for a small South Jersey construction contractor ' +
+  '(roofing, framing, concrete, HVAC, electrical). You are given two months of ' +
+  'profit & loss pulled from QuickBooks — "thisMonth" and "lastMonth" — each ' +
+  'with total revenue, total expenses, net profit, and a breakdown of expenses ' +
+  'by category. thisMonth is month-to-date and still in progress, so frame it as ' +
+  '"so far this month" and do NOT alarm them that totals are lower simply ' +
+  'because the month is not over yet. Write ONE plain-English paragraph of 3 to 5 ' +
+  'short sentences comparing the two months: what went up, what went down, and ' +
+  'which expense category or revenue swing drove the difference, then finish with ' +
+  'ONE concrete, actionable observation. Use the exact dollar figures given — ' +
+  'never invent numbers or categories, and ignore anything that is $0. Dollars ' +
+  'and plain blue-collar language, not percentages or accounting jargon. No ' +
+  'greeting, no sign-off, no bullet points — one flowing paragraph.';
+
+// Plain-English paragraph comparing this month vs last month's P&L. `thisMonth`
+// and `lastMonth` are the shapes from getMonthlyPL: { label, revenue, expenses,
+// net, categories }.
+export async function generateMonthlyPLSummary({ thisMonth, lastMonth }) {
+  const dir = (now, prev) => (now >= prev ? 'up' : 'down');
+  const fallback =
+    `So far in ${thisMonth.label}, you've brought in ${money(thisMonth.revenue)} and spent ` +
+    `${money(thisMonth.expenses)}, leaving ${money(thisMonth.net)} net. That's revenue ` +
+    `${dir(thisMonth.revenue, lastMonth.revenue)} from ${money(lastMonth.revenue)} and expenses ` +
+    `${dir(thisMonth.expenses, lastMonth.expenses)} from ${money(lastMonth.expenses)} compared with ` +
+    `all of ${lastMonth.label}, so your net is ${dir(thisMonth.net, lastMonth.net)}. Keep invoicing ` +
+    `on time and watch your biggest cost categories to hold the line on profit.`;
+
+  if (!process.env.ANTHROPIC_API_KEY) return fallback;
+  try {
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY.trim() });
+    const resp = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 400,
+      system: [{ type: 'text', text: MONTHLY_PL_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: JSON.stringify({ thisMonth, lastMonth }) }],
+    });
+    const text = resp.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+    return text || fallback;
+  } catch (e) {
+    console.error('generateMonthlyPLSummary error:', e.message);
     return fallback;
   }
 }

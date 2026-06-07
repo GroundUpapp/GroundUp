@@ -21,6 +21,7 @@ import {
   sendCustomReminder,
   getTaxSummary,
   getPaymentRisk,
+  getMonthlyPL,
 } from '../services/qboExtra.js';
 import { remindedWithin7Days, logReminder } from '../services/reminderLog.js';
 
@@ -165,6 +166,17 @@ router.get('/quickbooks/tax-summary', requireAuth, requirePro, requireQuickBooks
   } catch (err) {
     console.error('QuickBooks tax-summary error:', err);
     res.status(500).json({ error: 'Failed to load tax summary' });
+  }
+});
+
+// GET /api/quickbooks/monthly-pl — this month (month-to-date) vs last month's
+// P&L (revenue, expenses by category, net) with an AI plain-English comparison.
+router.get('/quickbooks/monthly-pl', requireAuth, requirePro, requireQuickBooks, async (req, res) => {
+  try {
+    res.json(await getMonthlyPL(req.qbo));
+  } catch (err) {
+    console.error('QuickBooks monthly-pl error:', err);
+    res.status(500).json({ error: 'Failed to load monthly P&L' });
   }
 });
 
