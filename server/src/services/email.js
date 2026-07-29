@@ -1,3 +1,9 @@
+/**
+ * CRON-ONLY. Returns EVERY connected user, with no tenant filter.
+ * Never call this from a user-facing route. Callers must re-scope
+ * per user inside the loop (see retention.js).
+ */
+export async function cronOnly_listAllConnectedUsers() {
 import { Resend } from 'resend';
 import { supabaseAdmin } from '../supabase.js';
 
@@ -32,7 +38,7 @@ export async function sendEmail({ to, subject, html, replyTo }) {
 }
 
 /** All users with a connected QuickBooks company, resolved to { userId, email }. */
-export async function listConnectedRecipients() {
+export async function cronOnly_listAllConnectedUsers() {
   const { data, error } = await supabaseAdmin.from('quickbooks_tokens').select('user_id');
   if (error) throw error;
 

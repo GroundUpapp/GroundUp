@@ -1,7 +1,7 @@
 import { getQboClient } from './qboClient.js';
 import { getSummary, getDailyCashFlow } from './qboData.js';
 import { getMoneyOwed, getJobs } from './qboExtra.js';
-import { sendEmail, listConnectedRecipients } from './email.js';
+import { sendEmail, cronOnly_listAllConnectedUsers } from './email.js';
 import { weeklyReportEmail, alertEmail } from './emailTemplates.js';
 import { generateWeeklyInsight } from './aiInsight.js';
 import { hasAlert, recordAlert } from './alertState.js';
@@ -27,7 +27,7 @@ function runwayDays(cashOnHand, daily) {
 // 1. Weekly report — one email per connected user.
 // ---------------------------------------------------------------------------
 export async function runWeeklyReports() {
-  const recipients = await listConnectedRecipients();
+  const recipients = await cronOnly_listAllConnectedUsers();
   const weekOf = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
   let sent = 0;
   const errors = [];
@@ -98,7 +98,7 @@ export async function runWeeklyReports() {
 // 2. Daily cash-flow alerts — threshold breaches, deduped via the alerts table.
 // ---------------------------------------------------------------------------
 export async function runCashAlerts() {
-  const recipients = await listConnectedRecipients();
+  const recipients = await cronOnly_listAllConnectedUsers();
   let sent = 0;
   const errors = [];
 
