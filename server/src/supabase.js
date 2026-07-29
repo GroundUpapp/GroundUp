@@ -10,16 +10,16 @@ function getClient() {
   if (client) return client;
 
   const url = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
 
-  if (!url || !serviceKey) {
+  if (!url || !secretKey) {
     throw new Error(
-      'Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY ' +
+      'Supabase is not configured. Set SUPABASE_URL and SUPABASE_SECRET_KEY ' +
         'in the environment (e.g. Vercel Project Settings → Environment Variables).'
     );
   }
 
-  client = createClient(url, serviceKey, {
+  client = createClient(url, secretKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   return client;
